@@ -58,14 +58,44 @@ npm start
 
 ## Итоговые рабочие команды
 
-### Backend
-1. `cd c:\Users\Георгий\donation-proxy-front-\backend`
-2. `python -m venv venv`
-3. `venv\Scripts\Activate.ps1`
-4. `python -m pip install -r requirements.txt`
-5. `venv\Scripts\python.exe -m uvicorn server:app --reload --host 0.0.0.0 --port 8000`
+### Backend (PowerShell или Bash)
 
-### Frontend
-1. `cd c:\Users\Георгий\donation-proxy-front-\frontend`
-2. `npm install`
-3. `npm start`
+**Первый запуск (установка зависимостей):**
+```powershell
+cd c:\Users\Георгий\donation-proxy-front-\backend
+python -m venv venv
+venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m uvicorn server:app --reload --host 127.0.0.1 --port 8000
+```
+
+**Последующие запуски:**
+```powershell
+cd c:\Users\Георгий\donation-proxy-front-\backend
+python -m uvicorn server:app --reload --host 127.0.0.1 --port 8000
+```
+
+**Или в Bash:**
+```bash
+cd c:/Users/Георгий/donation-proxy-front-/backend
+python.exe -m uvicorn server:app --reload --host 127.0.0.1 --port 8000
+```
+
+### Frontend (в отдельном терминале)
+
+**Первый запуск:**
+```bash
+cd c:/Users/Георгий/donation-proxy-front-/frontend
+npm install
+npm start
+```
+
+**Последующие запуски:**
+```bash
+cd c:/Users/Георгий/donation-proxy-front-/frontend
+npm start
+```
+
+### Проверка статуса
+- Backend: `curl http://127.0.0.1:8000/api/health`
+- Frontend: http://localhost:3000

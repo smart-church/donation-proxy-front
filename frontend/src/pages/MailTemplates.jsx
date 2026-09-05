@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import ReactQuill from "react-quill";
-import { Plus, Edit3, Save, Trash2, X, ChevronLeft } from "lucide-react";
+import { Plus, Edit3, Save, Trash2, X, ChevronLeft, MoreVertical } from "lucide-react";
 import * as api from "../mock/api";
 import DataTable from "../components/DataTable";
 import Modal from "../components/Modal";
@@ -19,11 +19,20 @@ export default function MailTemplates() {
   const [rows, setRows] = useState([]);
   const [selected, setSelected] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const reload = () => api.listTemplates(eventId).then(setRows);
   useEffect(() => { reload(); }, [eventId]);
 
-  if (selected) return <TemplateView eventId={eventId} template={selected} onBack={() => { setSelected(null); reload(); }} />;
+  const deleteTemplate = async (tpl) => {
+    await api.deleteTemplate(eventId, tpl.id);
+    notify("Шаблон удалён", "success");
+    reload();
+    setConfirmDelete(null);
+  };
+
+  if (selected && !confirmDelete) return <TemplateView eventId={eventId} template={selected} onBack={() => { setSelected(null); reload(); }} />;
 
   const columns = [
     { key: "num", label: "#", width: "60px", render: (_, i) => i + 1 },
@@ -39,6 +48,50 @@ export default function MailTemplates() {
     },
     { key: "subject", label: "Тема" },
     { key: "created_at", label: "Создан", render: (t) => formatDateShort(t.created_at) },
+    {
+      key: "actions",
+      label: "Действия",
+      width: "40px",
+      render: (t) => (
+        <div className="relative">
+          <button
+            className="btn btn-ghost !p-1"
+            onClick={() => setMenuOpen(menuOpen === t.id ? null : t.id)}
+            data-testid={`template-menu-${t.id}`}
+          >
+            <MoreVertical size={14} />
+          </button>
+          {menuOpen === t.id && (
+            <div
+              className="absolute right-0 mt-1 surface shadow-lg rounded-md p-1 z-10"
+              style={{ minWidth: "140px" }}
+            >
+              <button
+                className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-[color:var(--bg-elev-2)] flex items-center gap-2"
+                onClick={() => {
+                  setSelected(t);
+                  setMenuOpen(null);
+                }}
+                data-testid={`template-edit-${t.id}`}
+              >
+                <Edit3 size={12} /> Редактировать
+              </button>
+              <button
+                className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-[color:var(--bg-elev-2)] flex items-center gap-2"
+                style={{ color: "var(--danger)" }}
+                onClick={() => {
+                  setConfirmDelete(t);
+                  setMenuOpen(null);
+                }}
+                data-testid={`template-delete-${t.id}`}
+              >
+                <Trash2 size={12} /> Удалить
+              </button>
+            </div>
+          )}
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -58,6 +111,22 @@ export default function MailTemplates() {
           onClose={() => setCreating(false)}
           onCreated={() => { setCreating(false); reload(); notify("Шаблон создан", "success"); }}
         />
+      )}
+
+      {confirmDelete && (
+        <Modal
+          open
+          onClose={() => setConfirmDelete(null)}
+          title="Удалить шаблон?"
+          footer={
+            <>
+              <button className="btn btn-ghost" onClick={() => setConfirmDelete(null)}>Отмена</button>
+              <button className="btn btn-danger" onClick={() => deleteTemplate(confirmDelete)}>Удалить</button>
+            </>
+          }
+        >
+          <p className="text-sm">Действие нельзя отменить. Шаблон «{confirmDelete.name}» будет удалён.</p>
+        </Modal>
       )}
     </div>
   );

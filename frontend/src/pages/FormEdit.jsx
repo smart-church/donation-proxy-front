@@ -5,8 +5,6 @@ import {
   ChevronUp,
   ChevronDown,
   Trash2,
-  Eye,
-  EyeOff,
   Settings,
   Check,
   X,
@@ -28,13 +26,18 @@ const FIELD_TYPES = [
 export default function FormEdit() {
   const { eventId } = useParams();
   const [form, setForm] = useState({ fields: [] });
+  const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("idle"); // idle | saving | saved
   const timersRef = useRef({});
 
   useEffect(() => {
-    api.getForm(eventId).then((f) => {
+    Promise.all([
+      api.getForm(eventId),
+      api.getEvent(eventId)
+    ]).then(([f, e]) => {
       setForm(f);
+      setEvent(e);
       setLoading(false);
     });
   }, [eventId]);
@@ -76,6 +79,25 @@ export default function FormEdit() {
   };
 
   const requiredCount = form.fields.filter((f) => f.required && !f.hidden).length;
+  const isRegistrationOpen = event?.registration_open || false;
+
+  // System fields that should not be duplicated
+  const SYSTEM_FIELDS = ["email", "full_name"];
+  
+  // Get field types that are already used in the form
+  const usedSystemFields = form.fields
+    .map((f) => f.type)
+    .filter((t) => SYSTEM_FIELDS.includes(t));
+
+  // Get available field types for a given field (exclude already-used system fields)
+  const getAvailableFieldTypes = (currentField) => {
+    return FIELD_TYPES.filter(
+      (t) =>
+        !SYSTEM_FIELDS.includes(t.value) || // Non-system fields are always available
+        t.value === currentField.type || // Current type is always available
+        !usedSystemFields.includes(t.value) // System fields available if not already used
+    );
+  };
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -87,6 +109,15 @@ export default function FormEdit() {
         <h1 className="text-3xl font-extrabold">Анкета участника</h1>
         <SaveIndicator status={saveStatus} />
       </div>
+      
+      {isRegistrationOpen && (
+        <div className="mb-4 p-3 rounded-lg" style={{ background: "rgba(255, 193, 7, 0.1)", borderLeft: "4px solid #FFC107" }}>
+          <p style={{ color: "#856404", fontSize: "14px", fontWeight: "500" }}>
+            ⚠️ Редактирование анкеты невозможно. Регистрация уже открыта.
+          </p>
+        </div>
+      )}
+      
       <div className="text-sm mb-8" style={{ color: "var(--text-dim)" }}>
         {form.fields.length} поля{" "}
         <span style={{ color: "var(--brand)" }}>· {requiredCount} обязательных</span>
@@ -107,6 +138,8 @@ export default function FormEdit() {
               onPatch={(p) => patchLocal(field.id, p)}
               onMove={(dir) => move(field.id, dir)}
               onRemove={() => remove(field.id)}
+              disabled={isRegistrationOpen}
+              getAvailableFieldTypes={getAvailableFieldTypes}
             />
           ))}
           <button
@@ -114,6 +147,7 @@ export default function FormEdit() {
             onClick={addField}
             className="w-full py-4 rounded-xl border-2 border-dashed transition-all font-semibold hover:bg-[color:var(--brand-soft)]"
             style={{ borderColor: "var(--brand)", color: "var(--brand)" }}
+            disabled={isRegistrationOpen}
           >
             + Добавить поле
           </button>
@@ -139,12 +173,12 @@ function SaveIndicator({ status }) {
   return null;
 }
 
-function FieldEditor({ field, index, total, onPatch, onMove, onRemove }) {
+function FieldEditor({ field, index, total, onPatch, onMove, onRemove, disabled, getAvailableFieldTypes }) {
   const [expanded, setExpanded] = useState(index === 1);
   const isProtected = field.type === "full_name" || field.type === "email";
 
   return (
-    <div className="surface overflow-hidden" data-testid={`field-${field.id}`}>
+    <div className="surface overflow-hidden" data-testid={`field-${field.id}`} style={{ opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? "none" : "auto" }}>
       <div className="flex items-center justify-between px-4 py-3" style={{ background: "var(--bg-elev-2)" }}>
         <div className="flex items-center gap-3">
           <span
@@ -155,27 +189,19 @@ function FieldEditor({ field, index, total, onPatch, onMove, onRemove }) {
           </span>
           <span className="font-semibold">{field.title || "Без названия"}</span>
           {field.required && <span className="chip chip-brand">Обязательно</span>}
-          {field.hidden && <span className="chip">Скрыто</span>}
         </div>
         <div className="flex items-center gap-1">
           <span className="chip">{FIELD_TYPES.find((t) => t.value === field.type)?.label}</span>
-          <button className="btn btn-ghost !py-1 !px-2" title="Выше" onClick={() => onMove("up")} disabled={index === 1}>
+          <button className="btn btn-ghost !py-1 !px-2" title="Выше" onClick={() => onMove("up")} disabled={index === 1 || disabled}>
             <ChevronUp size={14} />
           </button>
           <button
             className="btn btn-ghost !py-1 !px-2"
             title="Ниже"
             onClick={() => onMove("down")}
-            disabled={index === total}
+            disabled={index === total || disabled}
           >
             <ChevronDown size={14} />
-          </button>
-          <button
-            className="btn btn-ghost !py-1 !px-2"
-            title="Скрыть"
-            onClick={() => onPatch({ hidden: !field.hidden })}
-          >
-            {field.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
           {!isProtected && (
             <button
@@ -183,6 +209,7 @@ function FieldEditor({ field, index, total, onPatch, onMove, onRemove }) {
               title="Удалить"
               onClick={onRemove}
               data-testid={`field-remove-${field.id}`}
+              disabled={disabled}
             >
               <Trash2 size={14} />
             </button>
@@ -198,7 +225,7 @@ function FieldEditor({ field, index, total, onPatch, onMove, onRemove }) {
           {/* Preview */}
           <div className="p-5" style={{ borderColor: "var(--border)" }}>
             <div className="text-[11px] uppercase tracking-wider mb-3 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
-              <Eye size={12} /> Предпросмотр
+              👁️ Предпросмотр
             </div>
             <FieldPreview field={field} />
           </div>
@@ -207,7 +234,7 @@ function FieldEditor({ field, index, total, onPatch, onMove, onRemove }) {
             <div className="text-[11px] uppercase tracking-wider mb-3 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
               <Settings size={12} /> Настройки
             </div>
-            <FieldSettings field={field} onPatch={onPatch} isProtected={isProtected} />
+            <FieldSettings field={field} onPatch={onPatch} isProtected={isProtected} disabled={disabled} getAvailableFieldTypes={getAvailableFieldTypes} />
           </div>
         </div>
       )}
@@ -264,8 +291,10 @@ function FieldPreview({ field }) {
   );
 }
 
-function FieldSettings({ field, onPatch, isProtected }) {
+function FieldSettings({ field, onPatch, isProtected, disabled, getAvailableFieldTypes }) {
   const showOptions = field.type === "checkbox" || field.type === "radio";
+  const availableTypes = getAvailableFieldTypes ? getAvailableFieldTypes(field) : FIELD_TYPES;
+  
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
@@ -276,6 +305,7 @@ function FieldSettings({ field, onPatch, isProtected }) {
             className="input"
             value={field.title}
             onChange={(e) => onPatch({ title: e.target.value })}
+            disabled={disabled}
           />
         </div>
         <div>
@@ -284,9 +314,9 @@ function FieldSettings({ field, onPatch, isProtected }) {
             className="input"
             value={field.type}
             onChange={(e) => onPatch({ type: e.target.value })}
-            disabled={isProtected}
+            disabled={isProtected || disabled}
           >
-            {FIELD_TYPES.map((t) => (
+            {availableTypes.map((t) => (
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}
           </select>
@@ -300,6 +330,7 @@ function FieldSettings({ field, onPatch, isProtected }) {
             className="input"
             value={field.placeholder || ""}
             onChange={(e) => onPatch({ placeholder: e.target.value })}
+            disabled={disabled}
           />
         </div>
       )}
@@ -310,6 +341,7 @@ function FieldSettings({ field, onPatch, isProtected }) {
           className="input"
           value={field.description || ""}
           onChange={(e) => onPatch({ description: e.target.value })}
+          disabled={disabled}
         />
       </div>
 
@@ -327,6 +359,7 @@ function FieldSettings({ field, onPatch, isProtected }) {
                     arr[i] = e.target.value;
                     onPatch({ options: arr });
                   }}
+                  disabled={disabled}
                 />
                 <button
                   className="btn btn-ghost !py-1 !px-2"
@@ -334,6 +367,7 @@ function FieldSettings({ field, onPatch, isProtected }) {
                     const arr = field.options.filter((_, j) => j !== i);
                     onPatch({ options: arr });
                   }}
+                  disabled={disabled}
                 >
                   <X size={12} />
                 </button>
@@ -342,15 +376,17 @@ function FieldSettings({ field, onPatch, isProtected }) {
             <button
               className="btn btn-ghost !py-1 !text-xs"
               onClick={() => onPatch({ options: [...(field.options || []), "Новый вариант"] })}
+              disabled={disabled}
             >
               <Plus size={12} /> Вариант
             </button>
           </div>
-          <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer">
+          <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer" style={{ opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? "none" : "auto" }}>
             <input
               type="checkbox"
               checked={!!field.allow_other}
               onChange={(e) => onPatch({ allow_other: e.target.checked })}
+              disabled={disabled}
             />
             «Другой» вариант
           </label>
@@ -360,19 +396,20 @@ function FieldSettings({ field, onPatch, isProtected }) {
       {field.type !== "filler" && (
         <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: "var(--border)" }}>
           <span className="text-sm" style={{ color: "var(--text-dim)" }}>Обязательное поле</span>
-          <Toggle checked={!!field.required} onChange={(v) => onPatch({ required: v })} />
+          <Toggle checked={!!field.required} onChange={(v) => onPatch({ required: v })} disabled={disabled} />
         </div>
       )}
     </div>
   );
 }
 
-function Toggle({ checked, onChange }) {
+function Toggle({ checked, onChange, disabled }) {
   return (
     <button
       onClick={() => onChange(!checked)}
       className="relative w-11 h-6 rounded-full transition-colors"
-      style={{ background: checked ? "var(--brand)" : "var(--bg-elev-2)", border: `1px solid var(--border)` }}
+      style={{ background: checked ? "var(--brand)" : "var(--bg-elev-2)", border: `1px solid var(--border)`, opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+      disabled={disabled}
     >
       <span
         className="absolute top-0.5 w-4 h-4 rounded-full transition-all"

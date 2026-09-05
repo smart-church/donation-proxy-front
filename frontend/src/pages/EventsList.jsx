@@ -88,7 +88,10 @@ export default function EventsList() {
             <button
               key={ev.id}
               data-testid={`event-card-${ev.id}`}
-              onClick={() => navigate(`/events/${ev.id}/participants`)}
+              onClick={async () => {
+                await api.recordEventView(ev.id);
+                navigate(`/events/${ev.id}/participants`);
+              }}
               className="surface p-5 text-left flex items-center justify-between hover:border-[color:var(--brand)] transition-all group"
             >
               <div className="flex items-center gap-4">

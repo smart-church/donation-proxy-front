@@ -99,18 +99,31 @@ export default function MailCompose() {
               data-testid="recipient-input"
             />
           </div>
-          {suggestions.length > 0 && (
+          {(suggestions.length > 0 || (query.includes("@") && !recipients.includes(query.trim()))) && (
             <div className="mt-1 surface p-1">
+              {/* Participant suggestions */}
               {suggestions.map((s) => (
                 <button
                   key={s.email}
                   onClick={() => addRecipient(s.email)}
-                  className="w-full text-left px-3 py-2 rounded-md hover:bg-[color:var(--bg-elev-2)] text-sm flex justify-between"
+                  className="w-full text-left px-3 py-2 rounded-md hover:bg-[color:var(--bg-elev-2)] text-sm flex justify-between items-center"
                 >
                   <span className="font-medium">{s.name}</span>
-                  <span style={{ color: "var(--text-muted)" }}>{s.email}</span>
+                  <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>{s.email}</span>
                 </button>
               ))}
+              
+              {/* Custom email option */}
+              {query.includes("@") && !recipients.includes(query.trim()) && (
+                <button
+                  onClick={() => addRecipient(query.trim())}
+                  className="w-full text-left px-3 py-2 rounded-md hover:bg-[color:var(--bg-elev-2)] text-sm border-t"
+                  style={{ borderColor: "var(--border-subtle)", color: "var(--text-muted)" }}
+                >
+                  <Plus size={12} className="inline-block mr-1 mb-0.5" />
+                  Отправить на <span className="font-medium">{query.trim()}</span>
+                </button>
+              )}
             </div>
           )}
         </div>

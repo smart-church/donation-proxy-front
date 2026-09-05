@@ -458,4 +458,67 @@ export async function getUserById(id) {
   return sanitize(s.users.find((u) => u.id === id));
 }
 
+// ---------- ORGANIZERS MANAGEMENT ----------
+export async function listAllOrganizers() {
+  await wait(80);
+  const s = store.getState();
+  return s.users
+    .filter((u) => u.role === "organizer")
+    .map(sanitize);
+}
+
+export async function inviteOrganizer(email) {
+  await wait(200);
+  const s = store.getState();
+  
+  // Check if user already exists
+  if (s.users.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
+    throw apiError("MANAGER_ALREADY_EXISTS");
+  }
+
+  // Generate credentials
+  const login = email.split("@")[0];
+  const password = store.generatePassword();
+  
+  // Create new organizer
+  const id = "u_" + store.uid();
+  const now = store.now();
+  store.setState((st) => {
+    st.users.push({
+      id,
+      email,
+      full_name: email.split("@")[0],
+      password,
+      role: "organizer",
+      is_superuser: false,
+      created_at: now,
+    });
+  });
+  
+  // Simulate sending email with credentials
+  console.log(`📧 Email sent to ${email}:`, { login, password });
+  
+  return { ok: true, email };
+}
+
+// ---------- USER NAVIGATION ----------
+export async function getLastViewedEvent() {
+  await wait(60);
+  const s = store.getState();
+  if (!s.session) throw apiError("UNAUTHORIZED");
+  const eventId = s.last_viewed_event[s.session.user_id];
+  if (!eventId) return null;
+  return s.events.find((e) => e.id === eventId);
+}
+
+export async function recordEventView(eventId) {
+  await wait(60);
+  store.setState((st) => {
+    if (st.session) {
+      st.last_viewed_event[st.session.user_id] = eventId;
+    }
+  });
+  return { ok: true };
+}
+
 export const ERRORS = ERROR_MESSAGES;

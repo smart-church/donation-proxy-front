@@ -8,6 +8,7 @@ export default function Profile() {
   const { id } = useParams();
   const { user, refreshUser, notify } = useApp();
   const [profile, setProfile] = useState(null);
+  const [lastEvent, setLastEvent] = useState(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPw, setSavingPw] = useState(false);
   const [passwords, setPasswords] = useState({ current: "", next: "", confirm: "" });
@@ -16,6 +17,7 @@ export default function Profile() {
 
   useEffect(() => {
     api.getUserById(id).then(setProfile);
+    api.getLastViewedEvent().then(setLastEvent).catch(() => {});
   }, [id]);
 
   if (!profile) return <div className="min-h-screen grid place-items-center"><span className="spinner" /></div>;
@@ -48,11 +50,31 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen grain px-6 py-10" style={{ background: "var(--bg)" }}>
-      <div className="max-w-2xl mx-auto relative z-10">
-        <button className="btn btn-ghost mb-4" onClick={() => navigate("/events")}>
-          <ChevronLeft size={14} /> К мероприятиям
-        </button>
-        <div className="surface p-8 mb-4">
+      <div className="max-w-6xl mx-auto relative z-10 grid grid-cols-4 gap-6">
+        {/* Left Sidebar Navigation */}
+        <div>
+          <button className="btn btn-ghost w-full mb-4 justify-start" onClick={() => navigate("/events")}>
+            <ChevronLeft size={14} /> К мероприятиям
+          </button>
+          
+          {lastEvent && (
+            <div className="surface p-4">
+              <div className="text-xs uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>
+                Последнее мероприятие
+              </div>
+              <button
+                className="w-full text-left px-3 py-2 rounded-md hover:bg-[color:var(--bg-elev-2)] transition-colors text-sm font-medium"
+                onClick={() => navigate(`/events/${lastEvent.id}/participants`)}
+                data-testid="profile-last-event"
+              >
+                {lastEvent.name}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right Content */}
+        <div className="col-span-3">
           <div className="flex items-center gap-4 mb-6">
             <div
               className="w-14 h-14 rounded-full grid place-items-center font-bold text-xl"
@@ -66,76 +88,82 @@ export default function Profile() {
             </div>
           </div>
 
-          {isMe && (
-            <div className="space-y-4">
-              <div>
-                <label className="label">ФИО</label>
-                <input
-                  className="input"
-                  value={profile.full_name}
-                  onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
-                  data-testid="profile-full-name"
-                />
-              </div>
-              <div>
-                <label className="label">Электронная почта</label>
-                <input
-                  className="input"
-                  value={profile.email}
-                  onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                  data-testid="profile-email"
-                />
-              </div>
-              <button onClick={saveProfile} className="btn btn-primary" disabled={savingProfile} data-testid="profile-save">
-                {savingProfile ? <span className="spinner" /> : <Save size={14} />} Сохранить
-              </button>
+          <div className="grid grid-cols-2 gap-6">
+            {/* Profile Form */}
+            <div>
+              {isMe && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="label">ФИО</label>
+                    <input
+                      className="input"
+                      value={profile.full_name}
+                      onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
+                      data-testid="profile-full-name"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Электронная почта</label>
+                    <input
+                      className="input"
+                      value={profile.email}
+                      onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                      data-testid="profile-email"
+                    />
+                  </div>
+                  <button onClick={saveProfile} className="btn btn-primary" disabled={savingProfile} data-testid="profile-save">
+                    {savingProfile ? <span className="spinner" /> : <Save size={14} />} Сохранить
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {isMe && (
-          <div className="surface p-8">
-            <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: "var(--text-muted)" }}>
-              Смена пароля
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <label className="label">Текущий пароль</label>
-                <input
-                  type="password"
-                  className="input"
-                  value={passwords.current}
-                  onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
-                  data-testid="pw-current"
-                />
+            {/* Change Password */}
+            {isMe && (
+              <div className="surface p-8">
+                <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: "var(--text-muted)" }}>
+                  Смена пароля
+                </h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="label">Текущий пароль</label>
+                    <input
+                      type="password"
+                      className="input"
+                      value={passwords.current}
+                      onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
+                      data-testid="pw-current"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Новый пароль</label>
+                    <input
+                      type="password"
+                      className="input"
+                      value={passwords.next}
+                      onChange={(e) => setPasswords({ ...passwords, next: e.target.value })}
+                      data-testid="pw-next"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Повторите новый пароль</label>
+                    <input
+                      type="password"
+                      className="input"
+                      value={passwords.confirm}
+                      onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                      data-testid="pw-confirm"
+                    />
+                  </div>
+                  {pwError && <div className="text-xs" style={{ color: "var(--danger)" }}>{pwError}</div>}
+                  <button className="btn btn-primary" onClick={savePw} disabled={savingPw} data-testid="pw-save">
+                    {savingPw ? <span className="spinner" /> : <Lock size={14} />} Обновить пароль
+                  </button>
+                </div>
               </div>
-              <div>
-                <label className="label">Новый пароль</label>
-                <input
-                  type="password"
-                  className="input"
-                  value={passwords.next}
-                  onChange={(e) => setPasswords({ ...passwords, next: e.target.value })}
-                  data-testid="pw-next"
-                />
-              </div>
-              <div>
-                <label className="label">Повторите новый пароль</label>
-                <input
-                  type="password"
-                  className="input"
-                  value={passwords.confirm}
-                  onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
-                  data-testid="pw-confirm"
-                />
-              </div>
-              {pwError && <div className="text-xs" style={{ color: "var(--danger)" }}>{pwError}</div>}
-              <button className="btn btn-primary" onClick={savePw} disabled={savingPw} data-testid="pw-save">
-                {savingPw ? <span className="spinner" /> : <Lock size={14} />} Обновить пароль
-              </button>
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -47,12 +47,15 @@ export default function ParticipantsList() {
   const [colFilters, setColFilters] = useState({});
   const [pendingFilter, setPendingFilter] = useState({ col: null, val: "" });
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 20;
 
   useEffect(() => {
     (async () => {
       const [f, p] = await Promise.all([api.getForm(eventId), api.listParticipants(eventId)]);
       setForm(f);
       setParticipants(p);
+      setCurrentPage(1);
       setLoading(false);
     })();
   }, [eventId]);
@@ -88,13 +91,22 @@ export default function ParticipantsList() {
     });
   }, [participants, colFilters, dynamicCols]);
 
+  const paginationInfo = useMemo(() => {
+    const total = filteredRows.length;
+    const totalPages = Math.ceil(total / PAGE_SIZE);
+    const startIdx = (currentPage - 1) * PAGE_SIZE;
+    const endIdx = startIdx + PAGE_SIZE;
+    const paginatedRows = filteredRows.slice(startIdx, endIdx);
+    return { total, totalPages, currentPage, startIdx, endIdx, paginatedRows };
+  }, [filteredRows, currentPage, PAGE_SIZE]);
+
   const tableColumns = useMemo(() => {
     const cols = [
       {
         key: "num",
         label: "#",
         width: "60px",
-        render: (_, i) => <span style={{ color: "var(--text-muted)" }}>{i + 1}</span>,
+        render: (_, i) => <span style={{ color: "var(--text-muted)" }}>{paginationInfo.startIdx + i + 1}</span>,
       },
       {
         key: "full_name",
@@ -122,14 +134,15 @@ export default function ParticipantsList() {
       });
     });
     return cols;
-  }, [selectedCols, dynamicCols, navigate, eventId]);
+  }, [selectedCols, dynamicCols, navigate, eventId, paginationInfo.startIdx]);
 
   const toggleCol = (id) => {
     setSelectedCols((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   };
 
   const exportXlsx = () => {
-    const rows = filteredRows.map((p, i) => {
+    // Always export all participants, not just filtered ones
+    const rows = participants.map((p, i) => {
       const row = { "#": i + 1, "ФИО": p.full_name, "Почта": p.email, "Статус": statusMap(p.status) };
       selectedCols.forEach((cid) => {
         if (cid === "email" || cid === "status") return;
@@ -229,7 +242,9 @@ export default function ParticipantsList() {
 
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-xl font-bold flex items-baseline gap-2">
-          Участники <span className="text-sm font-normal" style={{ color: "var(--text-muted)" }}>{filteredRows.length}</span>
+          Участники <span className="text-sm font-normal" style={{ color: "var(--text-muted)" }}>
+            {paginationInfo.startIdx + 1}–{Math.min(paginationInfo.endIdx, paginationInfo.total)} из {paginationInfo.total}
+          </span>
         </h2>
         <div className="flex items-center gap-2">
           <button className="btn btn-ghost" onClick={exportXlsx} data-testid="participants-export">
@@ -246,12 +261,39 @@ export default function ParticipantsList() {
           <span className="spinner" /> Загрузка...
         </div>
       ) : (
-        <DataTable
-          columns={tableColumns}
-          rows={filteredRows}
-          testid="participants-table"
-          emptyText="В таблице отсутствуют данные"
-        />
+        <>
+          <DataTable
+            columns={tableColumns}
+            rows={paginationInfo.paginatedRows}
+            testid="participants-table"
+            emptyText="В таблице отсутствуют данные"
+          />
+          
+          {/* Pagination Controls */}
+          <div className="flex items-center justify-between mt-4">
+            <div style={{ color: "var(--text-muted)", fontSize: "12px" }}>
+              Страница {paginationInfo.currentPage} из {Math.max(1, paginationInfo.totalPages)}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="btn btn-ghost !py-1 !px-3"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={paginationInfo.currentPage === 1}
+                data-testid="pagination-prev"
+              >
+                ← Предыдущая
+              </button>
+              <button
+                className="btn btn-ghost !py-1 !px-3"
+                onClick={() => setCurrentPage(prev => Math.min(paginationInfo.totalPages, prev + 1))}
+                disabled={paginationInfo.currentPage >= paginationInfo.totalPages}
+                data-testid="pagination-next"
+              >
+                Следующая →
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

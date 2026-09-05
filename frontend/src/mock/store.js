@@ -23,6 +23,10 @@ function now() {
   return new Date().toISOString();
 }
 
+function generatePassword() {
+  return Math.random().toString(36).slice(2, 12);
+}
+
 function seed() {
   const eventId = "ev_" + uid();
   const templateId = "tpl_" + uid();
@@ -35,6 +39,7 @@ function seed() {
         password: SEED_ADMIN_PASSWORD,
         full_name: "Актан Ибраев",
         is_superuser: true,
+        role: "admin",
       },
       {
         id: "u_manager",
@@ -42,9 +47,11 @@ function seed() {
         password: SEED_MANAGER_PASSWORD,
         full_name: "Мария Организатор",
         is_superuser: false,
+        role: "organizer",
       },
     ],
     admins: ["u_admin"],
+    last_viewed_event: {}, // { user_id: event_id }
     events: [
       {
         id: eventId,
@@ -143,6 +150,7 @@ const store = {
   },
   uid,
   now,
+  generatePassword,
 };
 
 export default store;

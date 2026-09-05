@@ -13,6 +13,7 @@ import { MailOutbox } from "./pages/MailOutbox";
 import MailCompose from "./pages/MailCompose";
 import MailTemplates from "./pages/MailTemplates";
 import { Managers, Admins } from "./pages/People";
+import AdminOrganizers from "./pages/AdminOrganizers";
 import { PublicForm, PublicSuccess, PublicFail } from "./pages/PublicForm";
 import Profile from "./pages/Profile";
 
@@ -58,6 +59,7 @@ function AppRoutes() {
                 <Route path="/events/:eventId/mail/create" element={<MailCompose />} />
                 <Route path="/events/:eventId/mail-templates" element={<MailTemplates />} />
                 <Route path="/events/:eventId/managers" element={<Managers />} />
+                <Route path="/organizers" element={<AdminOrganizers />} />
                 <Route path="/admins" element={<Admins />} />
                 <Route path="*" element={<Navigate to="/events" replace />} />
               </Routes>
