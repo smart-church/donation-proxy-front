@@ -11,6 +11,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import * as api from "../mock/api";
+import { useApp } from "../components/AppContext";
 
 const FIELD_TYPES = [
   { value: "text", label: "Текст" },
@@ -23,21 +24,28 @@ const FIELD_TYPES = [
   { value: "filler", label: "Разделитель" },
 ];
 
+const validateField = (field) => {
+  if (!field.title.trim()) return "Введите заголовок поля.";
+  if (field.title.length > 255) return "Заголовок не должен превышать 255 символов.";
+  if ((field.placeholder || "").length > 255) return "Заполнитель не должен превышать 255 символов.";
+  if (["checkbox", "radio"].includes(field.type) && (field.options || []).some((option) => !option.trim())) {
+    return "Варианты ответа не должны быть пустыми.";
+  }
+  return "";
+};
+
 export default function FormEdit() {
   const { eventId } = useParams();
   const [form, setForm] = useState({ fields: [] });
-  const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState("idle"); // idle | saving | saved
+  const [fieldErrors, setFieldErrors] = useState({});
   const timersRef = useRef({});
+  const { notify } = useApp();
 
   useEffect(() => {
-    Promise.all([
-      api.getForm(eventId),
-      api.getEvent(eventId)
-    ]).then(([f, e]) => {
+    api.getForm(eventId).then((f) => {
       setForm(f);
-      setEvent(e);
       setLoading(false);
     });
   }, [eventId]);
@@ -46,40 +54,71 @@ export default function FormEdit() {
     setSaveStatus("saving");
     clearTimeout(timersRef.current[fieldId]);
     timersRef.current[fieldId] = setTimeout(async () => {
-      await api.patchField(eventId, fieldId, patch);
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 1200);
+      try {
+        await api.patchField(eventId, fieldId, patch);
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 1200);
+      } catch (error) {
+        setSaveStatus("error");
+        setFieldErrors((current) => ({ ...current, [fieldId]: error.message_ru }));
+      }
     }, 700);
   };
 
   const patchLocal = (fieldId, patch) => {
+    const currentField = form.fields.find((field) => field.id === fieldId);
+    const nextField = { ...currentField, ...patch };
     setForm((f) => ({
       ...f,
-      fields: f.fields.map((x) => (x.id === fieldId ? { ...x, ...patch } : x)),
+      fields: f.fields.map((x) => (x.id === fieldId ? nextField : x)),
     }));
-    debounceSave(fieldId, patch);
+    const validationError = validateField(nextField);
+    if (validationError) {
+      clearTimeout(timersRef.current[fieldId]);
+      setSaveStatus("error");
+      setFieldErrors((current) => ({ ...current, [fieldId]: validationError }));
+      return;
+    }
+    setFieldErrors((current) => {
+      const next = { ...current };
+      delete next[fieldId];
+      return next;
+    });
+    debounceSave(fieldId, nextField);
   };
 
   const addField = async () => {
-    const { id } = await api.addField(eventId, { type: "text", title: "Новый вопрос" });
-    const f = await api.getForm(eventId);
-    setForm(f);
+    try {
+      await api.addField(eventId, { type: "text", title: "Новый вопрос" });
+      const f = await api.getForm(eventId);
+      setForm(f);
+    } catch (error) {
+      notify(error.message_ru || "Не удалось добавить поле", "error");
+    }
   };
 
   const move = async (fieldId, dir) => {
-    await api.moveField(eventId, fieldId, dir);
-    const f = await api.getForm(eventId);
-    setForm(f);
+    try {
+      await api.moveField(eventId, fieldId, dir);
+      const f = await api.getForm(eventId);
+      setForm(f);
+    } catch (error) {
+      notify(error.message_ru || "Не удалось переместить поле", "error");
+    }
   };
 
   const remove = async (fieldId) => {
-    await api.removeField(eventId, fieldId);
-    const f = await api.getForm(eventId);
-    setForm(f);
+    try {
+      await api.removeField(eventId, fieldId);
+      const f = await api.getForm(eventId);
+      setForm(f);
+    } catch (error) {
+      notify(error.message_ru || "Не удалось удалить поле", "error");
+    }
   };
 
   const requiredCount = form.fields.filter((f) => f.required && !f.hidden).length;
-  const isRegistrationOpen = event?.registration_open || false;
+  const isFormReadOnly = !!form.registration_started;
 
   // System fields that should not be duplicated
   const SYSTEM_FIELDS = ["email", "full_name"];
@@ -110,10 +149,10 @@ export default function FormEdit() {
         <SaveIndicator status={saveStatus} />
       </div>
       
-      {isRegistrationOpen && (
+      {isFormReadOnly && (
         <div className="mb-4 p-3 rounded-lg" style={{ background: "rgba(255, 193, 7, 0.1)", borderLeft: "4px solid #FFC107" }}>
           <p style={{ color: "#856404", fontSize: "14px", fontWeight: "500" }}>
-            ⚠️ Редактирование анкеты невозможно. Регистрация уже открыта.
+            ⚠️ Редактирование анкеты невозможно. Регистрация уже запускалась.
           </p>
         </div>
       )}
@@ -138,7 +177,8 @@ export default function FormEdit() {
               onPatch={(p) => patchLocal(field.id, p)}
               onMove={(dir) => move(field.id, dir)}
               onRemove={() => remove(field.id)}
-              disabled={isRegistrationOpen}
+              disabled={isFormReadOnly}
+              error={fieldErrors[field.id]}
               getAvailableFieldTypes={getAvailableFieldTypes}
             />
           ))}
@@ -147,7 +187,7 @@ export default function FormEdit() {
             onClick={addField}
             className="w-full py-4 rounded-xl border-2 border-dashed transition-all font-semibold hover:bg-[color:var(--brand-soft)]"
             style={{ borderColor: "var(--brand)", color: "var(--brand)" }}
-            disabled={isRegistrationOpen}
+            disabled={isFormReadOnly}
           >
             + Добавить поле
           </button>
@@ -170,15 +210,17 @@ function SaveIndicator({ status }) {
         <Check size={11} /> Сохранено
       </span>
     );
+  if (status === "error")
+    return <span className="chip chip-danger">Ошибка сохранения</span>;
   return null;
 }
 
-function FieldEditor({ field, index, total, onPatch, onMove, onRemove, disabled, getAvailableFieldTypes }) {
+function FieldEditor({ field, index, total, onPatch, onMove, onRemove, disabled, error, getAvailableFieldTypes }) {
   const [expanded, setExpanded] = useState(index === 1);
   const isProtected = field.type === "full_name" || field.type === "email";
 
   return (
-    <div className="surface overflow-hidden" data-testid={`field-${field.id}`} style={{ opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? "none" : "auto" }}>
+    <div className="surface overflow-hidden" data-testid={`field-${field.id}`} style={{ opacity: disabled ? 0.6 : 1 }}>
       <div className="flex items-center justify-between px-4 py-3" style={{ background: "var(--bg-elev-2)" }}>
         <div className="flex items-center gap-3">
           <span
@@ -234,7 +276,7 @@ function FieldEditor({ field, index, total, onPatch, onMove, onRemove, disabled,
             <div className="text-[11px] uppercase tracking-wider mb-3 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
               <Settings size={12} /> Настройки
             </div>
-            <FieldSettings field={field} onPatch={onPatch} isProtected={isProtected} disabled={disabled} getAvailableFieldTypes={getAvailableFieldTypes} />
+            <FieldSettings field={field} onPatch={onPatch} isProtected={isProtected} disabled={disabled} error={error} getAvailableFieldTypes={getAvailableFieldTypes} />
           </div>
         </div>
       )}
@@ -291,12 +333,14 @@ function FieldPreview({ field }) {
   );
 }
 
-function FieldSettings({ field, onPatch, isProtected, disabled, getAvailableFieldTypes }) {
+function FieldSettings({ field, onPatch, isProtected, disabled, error, getAvailableFieldTypes }) {
   const showOptions = field.type === "checkbox" || field.type === "radio";
+  const showPlaceholder = !["filler", "checkbox", "radio"].includes(field.type);
   const availableTypes = getAvailableFieldTypes ? getAvailableFieldTypes(field) : FIELD_TYPES;
   
   return (
     <div className="space-y-3">
+      {error && <div className="text-xs" role="alert" style={{ color: "var(--danger)" }}>{error}</div>}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label">Заголовок поля</label>
@@ -306,6 +350,7 @@ function FieldSettings({ field, onPatch, isProtected, disabled, getAvailableFiel
             value={field.title}
             onChange={(e) => onPatch({ title: e.target.value })}
             disabled={disabled}
+            maxLength={255}
           />
         </div>
         <div>
@@ -323,7 +368,7 @@ function FieldSettings({ field, onPatch, isProtected, disabled, getAvailableFiel
         </div>
       </div>
 
-      {field.type !== "filler" && (
+      {showPlaceholder && (
         <div>
           <label className="label">Заполнитель</label>
           <input
@@ -331,6 +376,7 @@ function FieldSettings({ field, onPatch, isProtected, disabled, getAvailableFiel
             value={field.placeholder || ""}
             onChange={(e) => onPatch({ placeholder: e.target.value })}
             disabled={disabled}
+            maxLength={255}
           />
         </div>
       )}

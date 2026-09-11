@@ -14,10 +14,11 @@ import MailCompose from "./pages/MailCompose";
 import MailTemplates from "./pages/MailTemplates";
 import { Managers, Admins } from "./pages/People";
 import AdminOrganizers from "./pages/AdminOrganizers";
-import { PublicForm, PublicSuccess, PublicFail } from "./pages/PublicForm";
 import Profile from "./pages/Profile";
+import { PublicFail, PublicForm, PublicSuccess } from "./pages/PublicForm";
+import ResetPassword from "./pages/ResetPassword";
 
-function ProtectedRoute({ children }) {
+function ProtectedRoute({ children, adminOnly = false }) {
   const { user, ready } = useApp();
   const location = useLocation();
   if (!ready) {
@@ -28,6 +29,7 @@ function ProtectedRoute({ children }) {
     );
   }
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
+  if (adminOnly && !user.is_admin) return <Navigate to="/events" replace />;
   return children;
 }
 
@@ -36,6 +38,7 @@ function AppRoutes() {
     <Routes>
       {/* Public routes */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/form/:id" element={<PublicForm />} />
       <Route path="/form/:id/success" element={<PublicSuccess />} />
       <Route path="/form/:id/fail" element={<PublicFail />} />
@@ -59,8 +62,8 @@ function AppRoutes() {
                 <Route path="/events/:eventId/mail/create" element={<MailCompose />} />
                 <Route path="/events/:eventId/mail-templates" element={<MailTemplates />} />
                 <Route path="/events/:eventId/managers" element={<Managers />} />
-                <Route path="/organizers" element={<AdminOrganizers />} />
-                <Route path="/admins" element={<Admins />} />
+                <Route path="/organizers" element={<ProtectedRoute adminOnly><AdminOrganizers /></ProtectedRoute>} />
+                <Route path="/admins" element={<ProtectedRoute adminOnly><Admins /></ProtectedRoute>} />
                 <Route path="*" element={<Navigate to="/events" replace />} />
               </Routes>
             </Layout>

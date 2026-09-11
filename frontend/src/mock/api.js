@@ -1,524 +1,219 @@
-// Mock API layer — imitates a backend using localStorage.
-// All calls are async and return small delays to simulate network.
-import store from "./store";
+import axios from "axios";
 
-const wait = (ms = 220) => new Promise((r) => setTimeout(r, ms));
+const TOKEN_KEY = "evman.api.token";
+const LAST_EVENT_KEY = "evman.lastEvent";
+const client = axios.create({
+  baseURL: process.env.REACT_APP_API_URL || "",
+  withCredentials: true,
+  xsrfCookieName: "csrftoken",
+  xsrfHeaderName: "X-CSRFToken",
+});
 
-const ERROR_MESSAGES = {
-  INVALID_CREDENTIALS: "Неверные данные",
-  EVENT_ALREADY_EXISTS: "Мероприятие с таким именем уже существует",
-  EVENT_NOT_FOUND: "Мероприятие не найдено",
-  FIELD_NAME_UNIQUE: "Такое поле уже существует",
-  MISSING_REQUIRED_FIELDS: "Не все обязательные поля заполнены",
-  MANAGER_ALREADY_EXISTS: "Пользователь уже является организатором",
-  CANNOT_REMOVE_SUPERUSER: "Нельзя удалить суперпользователя",
-  TEMPLATE_NOT_FOUND: "Шаблон не найден",
-  WRONG_PASSWORD: "Текущий пароль неверный",
+const API_ERROR_MESSAGES_RU = {
+  IS_ADMIN: "Нельзя изменить права суперпользователя.",
+  ALREADY_ADMIN: "Пользователь уже является администратором.",
+  ALREADY_MANAGER: "Пользователь уже является организатором мероприятия.",
+  LAST_MANAGER: "Нельзя удалить последнего организатора мероприятия.",
+  UNEXPECTED_SCHEMA: "Проверьте правильность заполнения полей.",
+  EMAIL_ALREADY_USED: "Этот email уже используется другим пользователем.",
+  DUPLICATE_INVITE_EMAIL: "Один email указан в приглашении несколько раз.",
+  INVALID_INVITE_TOKEN: "Ссылка приглашения недействительна или устарела.",
+  PASSWORD_IS_NOT_CORRECT: "Текущий пароль указан неверно.",
+  NEW_PASSWORD_DOES_NOT_MATCH: "Новый пароль и его подтверждение не совпадают.",
+  NO_SUCH_FORM_FIELD: "Поле анкеты с таким порядковым номером не найдено.",
+  SAME_ORDERS: "Нельзя переместить поле на ту же позицию.",
+  BAD_ORDER: "Некорректная позиция поля анкеты.",
+  NO_SUCH_FIELDS: "Не удалось найти поля анкеты для перемещения.",
+  CANNOT_DELETE_KEY_FIELDS: "Поля «ФИО» и «Email» нельзя удалить.",
+  CANNOT_CHANGE_KEY_FIELD_TYPE: "Тип полей «ФИО» и «Email» нельзя изменить.",
+  CANNOT_CHANGE_REQUIRED_KEY_FIELD: "Поля «ФИО» и «Email» должны оставаться обязательными.",
+  DUPLICATE_KEY_FIELD: "В анкете может быть только одно поле каждого системного типа.",
+  REGISTRATION_ALREADY_STARTED: "Анкету нельзя изменять после запуска регистрации.",
+  MAIL_NOT_FOUND: "Письмо не найдено.",
+  TEMPLATE_NOT_FOUND: "Шаблон письма не найден.",
+  DUPLICATE_RECEIVER: "Один получатель указан несколько раз.",
+  INVALID_RECEIVER_BOTH: "Укажите получателя по идентификатору или email.",
+  INVALID_RECEIVER_NONE: "Необходимо указать получателя.",
+  PARTICIPANT_NOT_FOUND: "Участник мероприятия не найден.",
+  NO_MAIL_CONTENT: "Выберите шаблон или заполните тему и текст письма.",
+  TEMPLATE_AND_CONTENT: "Используйте либо шаблон, либо тему и текст письма.",
+  TEMPLATE_NOT_IN_EVENT: "Выбранный шаблон не относится к этому мероприятию.",
+  EMPTY_RECEIVERS: "Добавьте хотя бы одного получателя.",
+  MAIL_QUEUE_UNAVAILABLE: "Сервис отправки писем временно недоступен.",
+  REGISTRATION_CLOSED: "Регистрация на мероприятие закрыта.",
+  THROTTLED: "Слишком много запросов. Попробуйте позже.",
+  INVALID_JSON: "Не удалось прочитать отправленные данные.",
+  UNSUPPORTED_MEDIA_TYPE: "Неподдерживаемый формат отправленных данных.",
 };
 
-function apiError(code) {
-  const err = new Error(ERROR_MESSAGES[code] || code);
-  err.code = code;
-  err.message_ru = ERROR_MESSAGES[code] || code;
-  return err;
-}
+const API_DETAIL_MESSAGES_RU = {
+  "Required when automatic mail is enabled.": "Выберите шаблон письма для автоматической отправки.",
+  "This field is required.": "Обязательное поле.",
+  "This field may not be blank.": "Поле не может быть пустым.",
+  "This list may not be empty.": "Список не может быть пустым.",
+  "Enter a valid email address.": "Введите корректный email.",
+  "Cannot parse request body.": "Проверьте правильность заполнения полей.",
+  "Duplicate email in invite list.": "Один email указан в приглашении несколько раз.",
+};
 
-// ---------- AUTH ----------
-export async function login({ email, password }) {
-  await wait();
-  const s = store.getState();
-  const user = s.users.find(
-    (u) => u.email.toLowerCase() === (email || "").toLowerCase() && u.password === password
-  );
-  if (!user) throw apiError("INVALID_CREDENTIALS");
-  const token = "mock-token." + user.id;
-  store.setState((st) => {
-    st.session = { user_id: user.id, token };
-  });
-  return { token, user: sanitize(user) };
-}
+const getErrorDetail = (value) => {
+  if (Array.isArray(value)) return getErrorDetail(value[0]);
+  if (value && typeof value === "object") {
+    if (value.details) return { message: String(value.details), code: value.code };
+    if (value.detail) return getErrorDetail(value.detail);
+    const firstValue = Object.values(value)[0];
+    return firstValue === undefined ? {} : getErrorDetail(firstValue);
+  }
+  return value == null ? {} : { message: String(value) };
+};
 
-export async function logout() {
-  await wait(60);
-  store.setState((st) => {
-    st.session = null;
-  });
-  return { ok: true };
-}
+const translateApiError = (value, status) => {
+  const { message, code } = getErrorDetail(value);
+  if (code && API_ERROR_MESSAGES_RU[code]) return API_ERROR_MESSAGES_RU[code];
+  if (message && API_DETAIL_MESSAGES_RU[message]) return API_DETAIL_MESSAGES_RU[message];
+  if (message && /This password is too short/i.test(message)) return "Пароль слишком короткий.";
+  if (message && /This password is too common/i.test(message)) return "Пароль слишком распространённый.";
+  if (message && /This password is entirely numeric/i.test(message)) return "Пароль не должен состоять только из цифр.";
+  if (message && /password is too similar/i.test(message)) return "Пароль слишком похож на данные пользователя.";
+  if (message && /Ensure this field has no more than (\d+) characters/i.test(message)) {
+    const limit = message.match(/(\d+)/)?.[1];
+    return `Значение не должно превышать ${limit} символов.`;
+  }
+  if (message && /[А-Яа-яЁё]/.test(message)) return message;
+  if (!status) return "Не удалось связаться с сервером.";
+  if (status === 400) return "Проверьте правильность заполнения данных.";
+  if (status === 401) return "Необходима авторизация.";
+  if (status === 403) return "Недостаточно прав для выполнения действия.";
+  if (status === 404) return "Запрошенные данные не найдены.";
+  if (status === 409) return "Действие невозможно из-за текущего состояния данных.";
+  if (status === 429) return "Слишком много запросов. Попробуйте позже.";
+  if (status >= 500) return "Сервис временно недоступен.";
+  return "Не удалось выполнить запрос.";
+};
 
-export async function getMe() {
-  await wait(60);
-  const s = store.getState();
-  if (!s.session) throw apiError("UNAUTHORIZED");
-  return sanitize(s.users.find((u) => u.id === s.session.user_id));
-}
+client.interceptors.request.use((config) => {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+client.interceptors.response.use((r) => r, (error) => {
+  const body = error.response?.data;
+  const status = error.response?.status;
+  const detail = getErrorDetail(body);
+  error.code = body?.code || detail.code || status;
+  error.field_errors = {};
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    Object.entries(body).forEach(([field, value]) => {
+      if (!["code", "details", "detail"].includes(field)) {
+        error.field_errors[field] = translateApiError(value, status);
+      }
+    });
+  }
+  error.message_ru = translateApiError(body, status);
+  throw error;
+});
 
-function sanitize(u) {
-  if (!u) return null;
-  const { password, ...rest } = u;
-  return rest;
-}
+const result = (r) => r.data;
+const ok = () => ({ ok: true });
+const userToView = (u) => {
+  const privileges = u.privileges || [];
+  const is_superuser = u.is_superuser ?? privileges.includes("superuser");
+  const is_admin = u.is_staff ?? (privileges.includes("admin") || is_superuser);
+  return { ...u, is_superuser, is_admin, full_name: [u.first_name, u.last_name].filter(Boolean).join(" "), role: is_admin ? "admin" : "organizer" };
+};
+const eventToView = (e) => ({ ...e, name: e.name ?? e.title, registration_open: e.is_active, auto_mail_enabled: e.use_auto_mail, success_template_id: e.success_form_template });
+const eventToApi = (e) => ({ title: e.name, description: e.description, closed_registration_description: e.closed_registration_description, success_form_description: e.success_form_description, fail_form_description: e.fail_form_description, is_active: e.registration_open, use_auto_mail: e.auto_mail_enabled, success_form_template: e.success_template_id || null });
+const fieldToView = (f) => ({ ...f, hidden: false, allow_other: f.has_custom_option });
+const fieldToApi = (f) => ({ type: f.type, title: f.title, placeholder: f.placeholder || "", description: f.description || "", required: !!f.required, options: f.options || [], has_custom_option: !!f.allow_other });
+const statusToView = { New: "pending", Accepted: "accepted", Rejected: "rejected" };
+const statusToApi = { pending: "New", accepted: "Accepted", rejected: "Rejected" };
+const participantToView = (p, fields) => {
+  const answers = {};
+  for (const field of fields) {
+    if (field.type === "full_name") answers[field.id] = p.full_name;
+    else if (field.type === "email") answers[field.id] = p.email;
+    else {
+      const stored = (p.fields || []).find((item) => item.key === field.title)?.value ?? "";
+      answers[field.id] = field.type === "checkbox" && stored ? stored.split(", ").filter(Boolean) : stored;
+    }
+  }
+  return { ...p, status: statusToView[p.status] || p.status, answers };
+};
+const participantToApi = (p, fields) => ({
+  full_name: p.full_name,
+  email: p.email,
+  fields: fields.filter((field) => !["full_name", "email", "filler"].includes(field.type)).map((field) => {
+    const value = p.answers?.[field.id];
+    return { key: field.title, value: Array.isArray(value) ? value.join(", ") : String(value ?? "") };
+  }),
+});
 
-// ---------- EVENTS ----------
-export async function listEvents() {
-  await wait();
-  const s = store.getState();
-  return s.events.map((e) => ({
-    ...e,
-    participants_count: (s.participants[e.id] || []).length,
-  }));
-}
+export async function login(credentials) { const r = await client.post("/api/v1/auth/login", credentials).then(result); localStorage.setItem(TOKEN_KEY, r.token); return { ...r, user: r.user ? userToView(r.user) : undefined }; }
+export async function logout() { await client.post("/api/v1/auth/logout"); localStorage.removeItem(TOKEN_KEY); return ok(); }
+export async function getMe() { return userToView(await client.get("/api/v1/profile").then(result)); }
+export async function acceptInvite(payload) { await client.post("/api/auth/invite/reset", payload); return ok(); }
 
+export async function listEvents() { const r = await client.get("/api/v1/events").then(result); return (Array.isArray(r) ? r : r.events || []).map(eventToView); }
 export async function getEvent(id) {
-  await wait();
-  const s = store.getState();
-  const ev = s.events.find((e) => e.id === id);
-  if (!ev) throw apiError("EVENT_NOT_FOUND");
-  return ev;
+  const event = await client.get(`/api/v1/events/${id}`).then(result);
+  return eventToView({ ...event, id: event.id ?? Number(id) });
 }
+export async function createEvent({ name }) { const r = await client.post("/api/v1/events", { name }).then(result); return { id: r.event?.id ?? r.id }; }
+export async function updateEvent(id, patch) { await client.post(`/api/v1/events/${id}`, eventToApi(patch)); return ok(); }
+export async function deleteEvent(id) { await client.delete(`/api/v1/events/${id}`); return ok(); }
+export async function approveEvent(id) { await client.patch(`/api/v1/events/${id}/approve`); return ok(); }
+export async function disapproveEvent(id) { await client.patch(`/api/v1/events/${id}/disapprove`); return ok(); }
 
-export async function createEvent({ name }) {
-  await wait();
-  const s = store.getState();
-  if (s.events.some((e) => e.name.trim().toLowerCase() === name.trim().toLowerCase())) {
-    throw apiError("EVENT_ALREADY_EXISTS");
-  }
-  const id = "ev_" + store.uid();
-  const now = store.now();
-  store.setState((st) => {
-    st.events.push({
-      id,
-      name: name.trim(),
-      registration_open: false,
-      auto_mail_enabled: false,
-      success_template_id: null,
-      description: "",
-      success_form_description: "",
-      fail_form_description: "",
-      closed_registration_description: "",
-      created_at: now,
-      managers: [st.session?.user_id || "u_admin"],
-    });
-    st.forms[id] = {
-      fields: [
-        {
-          id: "f_" + store.uid(),
-          type: "full_name",
-          title: "ФИО",
-          placeholder: "Введите ФИО",
-          description: "",
-          required: true,
-          hidden: false,
-          options: [],
-          allow_other: false,
-        },
-        {
-          id: "f_" + store.uid(),
-          type: "email",
-          title: "Электронная почта",
-          placeholder: "you@mail.com",
-          description: "",
-          required: true,
-          hidden: false,
-          options: [],
-          allow_other: false,
-        },
-      ],
-    };
-    st.participants[id] = [];
-    st.mail[id] = [];
-    st.templates[id] = [];
-    st.active_event_id = id;
-  });
-  return { id };
-}
+export async function getForm(eventId) { const r = await client.get(`/api/v1/events/${eventId}/form`).then(result); return { ...r, fields: (r.fields || []).map(fieldToView) }; }
+export async function getPublicForm(eventId) { const r = await client.get(`/api/v1/public/events/${eventId}/form`).then(result); return { event: eventToView(r.event), fields: (r.fields || []).map(fieldToView) }; }
+export async function patchField(eventId, fieldId, patch) { const form = await getForm(eventId); const field = form.fields.find((f) => String(f.id) === String(fieldId)); await client.put(`/api/v1/events/${eventId}/form`, { order: field.order, field: fieldToApi({ ...field, ...patch }) }); return ok(); }
+export async function addField(eventId, field) { const form = await getForm(eventId); const order = form.fields.length + 1; await client.put(`/api/v1/events/${eventId}/form`, { order, field: fieldToApi({ type: "text", title: "Новое поле", ...field }) }); const updated = await getForm(eventId); return { id: updated.fields.find((f) => f.order === order)?.id }; }
+export async function removeField(eventId, fieldId) { const form = await getForm(eventId); const field = form.fields.find((f) => String(f.id) === String(fieldId)); await client.delete(`/api/v1/events/${eventId}/form`, { data: { order: field.order } }); return ok(); }
+export async function moveField(eventId, fieldId, direction) { const form = await getForm(eventId); const field = form.fields.find((f) => String(f.id) === String(fieldId)); await client.patch(`/api/v1/events/${eventId}/form`, { order_old: field.order, order_new: field.order + (direction === "up" ? -1 : 1) }); return ok(); }
 
-export async function updateEvent(id, patch) {
-  await wait();
-  const s = store.getState();
-  const ev = s.events.find((e) => e.id === id);
-  if (!ev) throw apiError("EVENT_NOT_FOUND");
-  if (patch.name && s.events.some((e) => e.id !== id && e.name.trim().toLowerCase() === patch.name.trim().toLowerCase())) {
-    throw apiError("EVENT_ALREADY_EXISTS");
-  }
-  store.setState((st) => {
-    const target = st.events.find((e) => e.id === id);
-    Object.assign(target, patch);
-  });
-  return { ok: true };
-}
-
-export async function deleteEvent(id) {
-  await wait();
-  store.setState((st) => {
-    st.events = st.events.filter((e) => e.id !== id);
-    delete st.forms[id];
-    delete st.participants[id];
-    delete st.mail[id];
-    delete st.templates[id];
-    if (st.active_event_id === id) st.active_event_id = st.events[0]?.id || null;
-  });
-  return { ok: true };
-}
-
-// ---------- FORM ----------
-export async function getForm(eventId) {
-  await wait(80);
-  const s = store.getState();
-  return s.forms[eventId] || { fields: [] };
-}
-
-export async function patchField(eventId, fieldId, patch) {
-  await wait(120);
-  store.setState((st) => {
-    const f = st.forms[eventId].fields.find((x) => x.id === fieldId);
-    if (f) Object.assign(f, patch);
-  });
-  return { ok: true };
-}
-
-export async function addField(eventId, field) {
-  await wait(120);
-  const id = "f_" + store.uid();
-  store.setState((st) => {
-    st.forms[eventId].fields.push({
-      id,
-      type: field?.type || "text",
-      title: field?.title || "Новое поле",
-      placeholder: field?.placeholder || "",
-      description: "",
-      required: false,
-      hidden: false,
-      options: field?.type === "checkbox" || field?.type === "radio" ? ["Вариант 1"] : [],
-      allow_other: false,
-    });
-  });
-  return { id };
-}
-
-export async function removeField(eventId, fieldId) {
-  await wait(120);
-  store.setState((st) => {
-    st.forms[eventId].fields = st.forms[eventId].fields.filter((f) => {
-      if (f.id !== fieldId) return true;
-      if (f.type === "full_name" || f.type === "email") return true; // protected
-      return false;
-    });
-  });
-  return { ok: true };
-}
-
-export async function moveField(eventId, fieldId, direction) {
-  await wait(80);
-  store.setState((st) => {
-    const arr = st.forms[eventId].fields;
-    const i = arr.findIndex((f) => f.id === fieldId);
-    if (i < 0) return;
-    const j = direction === "up" ? i - 1 : i + 1;
-    if (j < 0 || j >= arr.length) return;
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  });
-  return { ok: true };
-}
-
-// ---------- PARTICIPANTS ----------
-export async function listParticipants(eventId) {
-  await wait();
-  const s = store.getState();
-  return s.participants[eventId] || [];
-}
-
-export async function getParticipant(eventId, pid) {
-  await wait();
-  const s = store.getState();
-  return (s.participants[eventId] || []).find((p) => p.id === pid);
-}
-
-export async function updateParticipant(eventId, pid, patch) {
-  await wait();
-  store.setState((st) => {
-    const p = st.participants[eventId].find((x) => x.id === pid);
-    if (p) Object.assign(p, patch);
-  });
-  return { ok: true };
-}
-
-export async function deleteParticipant(eventId, pid) {
-  await wait();
-  store.setState((st) => {
-    st.participants[eventId] = st.participants[eventId].filter((p) => p.id !== pid);
-  });
-  return { ok: true };
-}
-
-export async function submitParticipant(eventId, data) {
-  await wait();
-  const s = store.getState();
-  const form = s.forms[eventId];
-  const required = form.fields.filter((f) => f.required && !f.hidden);
-  const missing = required.find((f) => {
-    const v = data[f.id];
-    if (Array.isArray(v)) return v.length === 0;
-    return !v || String(v).trim() === "";
-  });
-  if (missing) throw apiError("MISSING_REQUIRED_FIELDS");
-
-  const id = "p_" + store.uid();
-  const fullNameField = form.fields.find((f) => f.type === "full_name");
-  const emailField = form.fields.find((f) => f.type === "email");
-  const record = {
-    id,
-    event_id: eventId,
-    status: "pending",
-    answers: data,
-    full_name: data[fullNameField?.id] || "",
-    email: data[emailField?.id] || "",
-    registered_at: store.now(),
-    payment_date: null,
-  };
-  store.setState((st) => {
-    st.participants[eventId].push(record);
-  });
-  return { id };
-}
-
-// ---------- MAIL ----------
-export async function listMail(eventId) {
-  await wait();
-  const s = store.getState();
-  return s.mail[eventId] || [];
-}
-export async function getMailItem(eventId, mid) {
-  await wait();
-  const s = store.getState();
-  return (s.mail[eventId] || []).find((m) => m.id === mid);
-}
-export async function sendMail(eventId, { recipients, template_id, subject, body }) {
-  await wait();
-  const s = store.getState();
-  let finalSubject = subject;
-  let finalBody = body;
-  if (template_id) {
-    const tpl = (s.templates[eventId] || []).find((t) => t.id === template_id);
-    if (tpl) {
-      finalSubject = tpl.subject;
-      finalBody = tpl.body;
+export async function listParticipants(eventId) { const [r, form] = await Promise.all([client.get(`/api/v1/events/${eventId}/participants`, { params: { page_size: 100 } }).then(result), getForm(eventId)]); return (r.participants || []).map((p) => participantToView(p, form.fields)); }
+export async function getParticipant(eventId, id) { const [p, form] = await Promise.all([client.get(`/api/v1/events/${eventId}/participants/${id}`).then(result), getForm(eventId)]); return participantToView(p, form.fields); }
+export async function updateParticipant(eventId, id, patch) { if (Object.keys(patch).length === 1 && patch.status) await client.patch(`/api/v1/events/${eventId}/participants/${id}`, { status: statusToApi[patch.status] || patch.status }); else { const form = await getForm(eventId); await client.put(`/api/v1/events/${eventId}/participants/${id}`, participantToApi(patch, form.fields)); } return ok(); }
+export async function deleteParticipant(eventId, id) { await client.delete(`/api/v1/events/${eventId}/participants/${id}`); return ok(); }
+export async function submitParticipant(eventId, answers, formFields, customValues = {}) {
+  const fields = formFields.filter((f) => f.type !== "filler").map((f) => {
+    const answer = { value: answers[f.id] ?? (f.type === "checkbox" ? [] : "") };
+    if (Object.prototype.hasOwnProperty.call(customValues, f.id)) {
+      answer.custom_value = customValues[f.id];
     }
-  }
-  const id = "m_" + store.uid();
-  store.setState((st) => {
-    st.mail[eventId].push({
-      id,
-      recipients,
-      template_id: template_id || null,
-      subject: finalSubject,
-      body: finalBody,
-      sent_at: store.now(),
-    });
+    return answer;
   });
-  return { id };
+  await client.post(`/form/${eventId}/submit`, { fields });
+  return ok();
 }
 
-export async function mailSuggestions(eventId, query) {
-  await wait(80);
-  const s = store.getState();
-  const q = (query || "").toLowerCase();
-  return (s.participants[eventId] || [])
-    .filter((p) => !q || p.email.toLowerCase().includes(q) || p.full_name.toLowerCase().includes(q))
-    .slice(0, 8)
-    .map((p) => ({ email: p.email, name: p.full_name }));
-}
+const mailToView = (m) => ({ ...m, recipients: [m.receiver], sent_at: m.date });
+export async function listMail(eventId) { const r = await client.get(`/api/v1/events/${eventId}/mail`, { params: { page_size: 100 } }).then(result); return (r.mails || []).map(mailToView); }
+export async function getMailItem(eventId, id) { const r = await client.get(`/api/v1/events/${eventId}/mail/${id}`).then(result); return mailToView(r.mail); }
+export async function sendMail(eventId, { recipients, template_id, subject, body }) { const payload = { receivers: recipients.map((email) => ({ email })) }; if (template_id) payload.template = Number(template_id); else Object.assign(payload, { subject, body }); await client.post(`/api/v1/events/${eventId}/mail`, payload); return ok(); }
+export async function mailSuggestions(eventId, query) { const r = await client.get(`/api/v1/events/${eventId}/mail/suggestion`).then(result); const q = (query || "").toLowerCase(); return (r.receivers || []).filter((x) => !q || x.email.toLowerCase().includes(q) || x.full_name.toLowerCase().includes(q)).map((x) => ({ ...x, name: x.full_name })); }
 
-// ---------- TEMPLATES ----------
-export async function listTemplates(eventId) {
-  await wait();
-  const s = store.getState();
-  return s.templates[eventId] || [];
-}
-export async function getTemplate(eventId, tid) {
-  await wait();
-  const s = store.getState();
-  return (s.templates[eventId] || []).find((t) => t.id === tid);
-}
-export async function createTemplate(eventId, data) {
-  await wait();
-  const id = "tpl_" + store.uid();
-  store.setState((st) => {
-    st.templates[eventId].push({
-      id,
-      name: data.name || "Новый шаблон",
-      subject: data.subject || "",
-      body: data.body || "",
-      created_at: store.now(),
-    });
-  });
-  return { id };
-}
-export async function updateTemplate(eventId, tid, patch) {
-  await wait();
-  store.setState((st) => {
-    const t = st.templates[eventId].find((x) => x.id === tid);
-    if (t) Object.assign(t, patch);
-  });
-  return { ok: true };
-}
-export async function deleteTemplate(eventId, tid) {
-  await wait();
-  store.setState((st) => {
-    st.templates[eventId] = st.templates[eventId].filter((t) => t.id !== tid);
-  });
-  return { ok: true };
-}
+export async function listTemplates(eventId) { const r = await client.get(`/api/v1/events/${eventId}/mail/template`).then(result); return r.templates || []; }
+export async function getTemplate(eventId, id) { return client.get(`/api/v1/events/${eventId}/mail/template/${id}`).then(result); }
+export async function createTemplate(eventId, payload) { return client.post(`/api/v1/events/${eventId}/mail/template`, payload).then(result); }
+export async function updateTemplate(eventId, id, payload) { await client.put(`/api/v1/events/${eventId}/mail/template/${id}`, payload); return ok(); }
+export async function deleteTemplate(eventId, id) { await client.delete(`/api/v1/events/${eventId}/mail/template/${id}`); return ok(); }
 
-// ---------- MANAGERS / ADMINS ----------
-export async function listManagers(eventId) {
-  await wait();
-  const s = store.getState();
-  const ev = s.events.find((e) => e.id === eventId);
-  if (!ev) return [];
-  return ev.managers.map((id) => sanitize(s.users.find((u) => u.id === id))).filter(Boolean);
-}
-export async function addManager(eventId, userId) {
-  await wait();
-  store.setState((st) => {
-    const ev = st.events.find((e) => e.id === eventId);
-    if (ev && !ev.managers.includes(userId)) ev.managers.push(userId);
-  });
-  return { ok: true };
-}
-export async function removeManager(eventId, userId) {
-  await wait();
-  store.setState((st) => {
-    const ev = st.events.find((e) => e.id === eventId);
-    if (ev) ev.managers = ev.managers.filter((id) => id !== userId);
-  });
-  return { ok: true };
-}
+export async function listManagers(eventId) { const r = await client.get(`/api/v1/events/${eventId}/managers`).then(result); return (r.managers || []).map(userToView); }
+export async function addManager(eventId, id) { await client.patch(`/api/v1/events/${eventId}/managers`, { user_id: Number(id) }); return ok(); }
+export async function removeManager(eventId, id) { await client.delete(`/api/v1/events/${eventId}/managers`, { data: { user_id: Number(id) } }); return ok(); }
+export async function listAdmins() { const r = await client.get("/api/v1/admins").then(result); return (r.admins || []).map(userToView); }
+export async function addAdmin(id) { await client.patch("/api/v1/admins", { user_id: Number(id) }); return ok(); }
+export async function removeAdmin(id) { await client.delete("/api/v1/admins", { data: { user_id: Number(id) } }); return ok(); }
+export async function searchUsers(query) { const r = await client.get("/api/v1/profiles").then(result); const q = (query || "").toLowerCase(); return (r.users || []).map(userToView).filter((u) => u.email.toLowerCase().includes(q) || u.full_name.toLowerCase().includes(q)); }
 
-export async function listAdmins() {
-  await wait();
-  const s = store.getState();
-  return s.admins.map((id) => sanitize(s.users.find((u) => u.id === id))).filter(Boolean);
-}
-export async function addAdmin(userId) {
-  await wait();
-  store.setState((st) => {
-    if (!st.admins.includes(userId)) st.admins.push(userId);
-  });
-  return { ok: true };
-}
-export async function removeAdmin(userId) {
-  await wait();
-  const s = store.getState();
-  const u = s.users.find((x) => x.id === userId);
-  if (u?.is_superuser) throw apiError("CANNOT_REMOVE_SUPERUSER");
-  store.setState((st) => {
-    st.admins = st.admins.filter((id) => id !== userId);
-  });
-  return { ok: true };
-}
-
-export async function searchUsers(query) {
-  await wait(80);
-  const s = store.getState();
-  const q = (query || "").toLowerCase();
-  return s.users
-    .filter((u) => u.email.toLowerCase().includes(q) || u.full_name.toLowerCase().includes(q))
-    .map(sanitize);
-}
-
-// ---------- PROFILE ----------
-export async function updateProfile(patch) {
-  await wait();
-  const s = store.getState();
-  if (!s.session) throw apiError("UNAUTHORIZED");
-  store.setState((st) => {
-    const u = st.users.find((x) => x.id === st.session.user_id);
-    if (u) {
-      if (patch.email) u.email = patch.email;
-      if (patch.full_name) u.full_name = patch.full_name;
-    }
-  });
-  return { ok: true };
-}
-export async function updatePassword({ current, next }) {
-  await wait();
-  const s = store.getState();
-  if (!s.session) throw apiError("UNAUTHORIZED");
-  const u = s.users.find((x) => x.id === s.session.user_id);
-  if (u.password !== current) throw apiError("WRONG_PASSWORD");
-  store.setState((st) => {
-    st.users.find((x) => x.id === st.session.user_id).password = next;
-  });
-  return { ok: true };
-}
-export async function getUserById(id) {
-  await wait(60);
-  const s = store.getState();
-  return sanitize(s.users.find((u) => u.id === id));
-}
-
-// ---------- ORGANIZERS MANAGEMENT ----------
-export async function listAllOrganizers() {
-  await wait(80);
-  const s = store.getState();
-  return s.users
-    .filter((u) => u.role === "organizer")
-    .map(sanitize);
-}
-
-export async function inviteOrganizer(email) {
-  await wait(200);
-  const s = store.getState();
-  
-  // Check if user already exists
-  if (s.users.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
-    throw apiError("MANAGER_ALREADY_EXISTS");
-  }
-
-  // Generate credentials
-  const login = email.split("@")[0];
-  const password = store.generatePassword();
-  
-  // Create new organizer
-  const id = "u_" + store.uid();
-  const now = store.now();
-  store.setState((st) => {
-    st.users.push({
-      id,
-      email,
-      full_name: email.split("@")[0],
-      password,
-      role: "organizer",
-      is_superuser: false,
-      created_at: now,
-    });
-  });
-  
-  // Simulate sending email with credentials
-  console.log(`📧 Email sent to ${email}:`, { login, password });
-  
-  return { ok: true, email };
-}
-
-// ---------- USER NAVIGATION ----------
-export async function getLastViewedEvent() {
-  await wait(60);
-  const s = store.getState();
-  if (!s.session) throw apiError("UNAUTHORIZED");
-  const eventId = s.last_viewed_event[s.session.user_id];
-  if (!eventId) return null;
-  return s.events.find((e) => e.id === eventId);
-}
-
-export async function recordEventView(eventId) {
-  await wait(60);
-  store.setState((st) => {
-    if (st.session) {
-      st.last_viewed_event[st.session.user_id] = eventId;
-    }
-  });
-  return { ok: true };
-}
-
-export const ERRORS = ERROR_MESSAGES;
+export async function updateProfile(patch) { const [first_name = "", ...last] = (patch.full_name || "").trim().split(/\s+/); await client.patch("/api/v1/profile", { first_name, last_name: last.join(" "), email: patch.email }); return ok(); }
+export async function updatePassword({ current, next }) { await client.patch("/api/v1/profile/password", { old_password: current, new_password: next, new_password_confirm: next }); localStorage.removeItem(TOKEN_KEY); return ok(); }
+export async function getUserById() { return getMe(); }
+export async function listUsers() { const r = await client.get("/api/v1/profiles").then(result); return (r.users || []).map(userToView); }
+export async function inviteOrganizer(email) { await client.post("/api/v1/profiles/invite", { emails: [email] }); return ok(); }
+export function getLastViewedEventId() { return localStorage.getItem(LAST_EVENT_KEY); }
+export async function getLastViewedEvent() { const id = getLastViewedEventId(); return id ? getEvent(id) : null; }
+export async function recordEventView(eventId) { localStorage.setItem(LAST_EVENT_KEY, String(eventId)); return ok(); }
+export function clearLastViewedEvent() { localStorage.removeItem(LAST_EVENT_KEY); }
+export const ERRORS = {};

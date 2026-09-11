@@ -53,13 +53,15 @@ export default function PeopleTable({
               rows.map((u, i) => (
                 <tr key={u.id}>
                   <td>{i + 1}</td>
-                  <td className="font-medium flex items-center gap-2">
-                    {u.full_name}
-                    {u.is_superuser && (
-                      <span className="chip chip-brand">
-                        <Shield size={10} /> superuser
-                      </span>
-                    )}
+                  <td className="font-medium">
+                    <div className="flex items-center gap-2">
+                      {u.full_name}
+                      {u.is_superuser && (
+                        <span className="chip chip-brand">
+                          <Shield size={10} /> superuser
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td style={{ color: "var(--text-dim)" }}>{u.email}</td>
                   <td>

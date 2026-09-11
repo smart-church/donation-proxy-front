@@ -23,6 +23,7 @@ export default function ParticipantDetail() {
   const [draft, setDraft] = useState({});
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState("");
 
   useEffect(() => {
     if (!eventId) return;
@@ -43,35 +44,56 @@ export default function ParticipantDetail() {
   }
 
   const changeStatus = async (s) => {
-    await api.updateParticipant(eventId, id, { status: s });
-    setParticipant({ ...participant, status: s });
-    notify("Статус обновлён", "success");
+    try {
+      await api.updateParticipant(eventId, id, { status: s });
+      setParticipant({ ...participant, status: s });
+      notify("Статус обновлён", "success");
+    } catch (error) {
+      notify(error.message_ru || "Не удалось изменить статус", "error");
+    }
   };
 
   const saveEdits = async () => {
     setSaving(true);
     const fullNameField = form.fields.find((f) => f.type === "full_name");
     const emailField = form.fields.find((f) => f.type === "email");
-    await api.updateParticipant(eventId, id, {
-      answers: draft,
-      full_name: fullNameField ? draft[fullNameField.id] : participant.full_name,
-      email: emailField ? draft[emailField.id] : participant.email,
-    });
-    setParticipant({
-      ...participant,
-      answers: draft,
-      full_name: fullNameField ? draft[fullNameField.id] : participant.full_name,
-      email: emailField ? draft[emailField.id] : participant.email,
-    });
-    setEditing(false);
-    setSaving(false);
-    notify("Изменения сохранены", "success");
+    const fullName = fullNameField ? String(draft[fullNameField.id] || "").trim() : participant.full_name;
+    const email = emailField ? String(draft[emailField.id] || "").trim() : participant.email;
+    if (!fullName) {
+      setEditError("Заполните поле ФИО.");
+      setSaving(false);
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setEditError("Введите корректный email.");
+      setSaving(false);
+      return;
+    }
+    setEditError("");
+    try {
+      await api.updateParticipant(eventId, id, {
+        answers: draft,
+        full_name: fullName,
+        email,
+      });
+      setParticipant({ ...participant, answers: draft, full_name: fullName, email });
+      setEditing(false);
+      notify("Изменения сохранены", "success");
+    } catch (error) {
+      setEditError(error.message_ru || "Не удалось сохранить изменения.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const del = async () => {
-    await api.deleteParticipant(eventId, id);
-    notify("Участник удалён", "success");
-    navigate(`/events/${eventId}/participants`);
+    try {
+      await api.deleteParticipant(eventId, id);
+      notify("Участник удалён", "success");
+      navigate(`/events/${eventId}/participants`);
+    } catch (error) {
+      notify(error.message_ru || "Не удалось удалить участника", "error");
+    }
   };
 
   return (
@@ -87,7 +109,7 @@ export default function ParticipantDetail() {
         </div>
         <div className="flex items-center gap-2">
           {!editing ? (
-            <button onClick={() => setEditing(true)} className="btn btn-ghost" data-testid="participant-edit-btn">
+            <button onClick={() => { setEditing(true); setEditError(""); }} className="btn btn-ghost" data-testid="participant-edit-btn">
               <Edit3 size={14} /> Редактировать
             </button>
           ) : (
@@ -129,7 +151,7 @@ export default function ParticipantDetail() {
         </div>
         <div className="surface p-4">
           <div className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>Дата регистрации</div>
-          <div className="text-sm font-medium">{new Date(participant.registered_at).toLocaleString("ru-RU")}</div>
+          <div className="text-sm font-medium">{participant.registered_at ? new Date(participant.registered_at).toLocaleString("ru-RU") : "—"}</div>
         </div>
         <div className="surface p-4">
           <div className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>Дата оплаты</div>
@@ -141,6 +163,7 @@ export default function ParticipantDetail() {
         <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: "var(--text-muted)" }}>
           Ответы анкеты
         </h3>
+        {editError && <div className="text-sm mb-4" role="alert" style={{ color: "var(--danger)" }}>{editError}</div>}
         <div className="grid gap-4">
           {form.fields.filter((f) => f.type !== "filler" && !f.hidden).map((f) => (
             <div key={f.id}>
@@ -223,5 +246,13 @@ function FieldInput({ field, value, onChange }) {
       </div>
     );
   }
-  return <input className="input" value={value || ""} onChange={(e) => onChange(e.target.value)} />;
+  return (
+    <input
+      type={field.type === "email" ? "email" : "text"}
+      maxLength={field.type === "email" || field.type === "full_name" ? 255 : 10000}
+      className="input"
+      value={value || ""}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
 }

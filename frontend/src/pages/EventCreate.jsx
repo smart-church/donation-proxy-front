@@ -18,10 +18,10 @@ export default function EventCreate() {
     }
     setLoading(true);
     try {
-      const { id } = await api.createEvent({ name });
+      const { id } = await api.createEvent({ name: name.trim() });
       navigate(`/events/${id}/edit`);
     } catch (err) {
-      setError(err.message_ru);
+      setError(err.field_errors?.name || err.message_ru || "Не удалось создать мероприятие.");
     } finally {
       setLoading(false);
     }
@@ -56,6 +56,7 @@ export default function EventCreate() {
                 setError("");
               }}
               placeholder="Например: Летний Хакатон 2026"
+              maxLength={255}
               className={`input ${error ? "error" : ""}`}
             />
             {error && (

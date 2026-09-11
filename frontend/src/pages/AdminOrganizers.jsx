@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Plus, X, Mail } from "lucide-react";
+import React, { useCallback, useEffect, useState } from "react";
+import { Plus } from "lucide-react";
 import * as api from "../mock/api";
 import Modal from "../components/Modal";
 import { useApp } from "../components/AppContext";
@@ -10,27 +10,29 @@ export default function AdminOrganizers() {
   const [loading, setLoading] = useState(true);
   const { notify } = useApp();
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
+    setLoading(true);
     try {
-      const data = await api.listAllOrganizers();
+      const data = await api.listUsers();
       setRows(data);
     } catch (e) {
       notify(e.message_ru || "Ошибка загрузки", "error");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  };
+  }, [notify]);
 
-  useEffect(() => { 
-    reload(); 
-  }, []);
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl">
       <div className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
-        Администрация › Организаторы
+        Администрация › Пользователи
       </div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-3xl font-extrabold">Организаторы</h1>
+        <h1 className="text-3xl font-extrabold">Пользователи</h1>
         <button 
           className="btn btn-primary" 
           onClick={() => setOpenAdd(true)} 
@@ -52,7 +54,7 @@ export default function AdminOrganizers() {
                 <th style={{ width: 60 }}>#</th>
                 <th>ФИО</th>
                 <th>Email</th>
-                <th style={{ width: 80 }}>Действия</th>
+                <th>Роль</th>
               </tr>
             </thead>
             <tbody>
@@ -66,16 +68,10 @@ export default function AdminOrganizers() {
                 rows.map((u, i) => (
                   <tr key={u.id}>
                     <td>{i + 1}</td>
-                    <td className="font-medium">{u.full_name}</td>
+                    <td className="font-medium">{u.full_name || "—"}</td>
                     <td style={{ color: "var(--text-dim)" }}>{u.email}</td>
-                    <td>
-                      <button
-                        className="btn btn-ghost !py-1 !px-2"
-                        title="Отправить приглашение"
-                        data-testid={`organizers-resend-${u.id}`}
-                      >
-                        <Mail size={14} />
-                      </button>
+                    <td style={{ color: "var(--text-dim)" }}>
+                      {u.is_superuser ? "Суперпользователь" : u.is_admin ? "Администратор" : "Организатор"}
                     </td>
                   </tr>
                 ))
@@ -93,10 +89,13 @@ export default function AdminOrganizers() {
               await api.inviteOrganizer(email);
               await reload();
               notify("Приглашение отправлено на почту", "success");
+              setOpenAdd(false);
+              return null;
             } catch (e) {
-              notify(e.message_ru || "Ошибка при отправке приглашения", "error");
+              const message = e.message_ru || "Ошибка при отправке приглашения";
+              notify(message, "error");
+              return message;
             }
-            setOpenAdd(false);
           }}
         />
       )}
@@ -107,13 +106,17 @@ export default function AdminOrganizers() {
 function InviteModal({ onClose, onInvite }) {
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (event) => {
+    event?.preventDefault();
     if (!email.trim()) {
       return;
     }
+    setError("");
     setSubmitting(true);
-    await onInvite(email);
+    const invitationError = await onInvite(email.trim().toLowerCase());
+    if (invitationError) setError(invitationError);
     setSubmitting(false);
   };
 
@@ -128,8 +131,9 @@ function InviteModal({ onClose, onInvite }) {
         <>
           <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
           <button
+            type="submit"
+            form="organizer-invite-form"
             className="btn btn-primary"
-            onClick={handleSubmit}
             disabled={!email.trim() || submitting}
             data-testid="organizers-invite-submit"
           >
@@ -138,9 +142,9 @@ function InviteModal({ onClose, onInvite }) {
         </>
       }
     >
-      <div className="space-y-3">
+      <form id="organizer-invite-form" className="space-y-3" onSubmit={handleSubmit}>
         <p className="text-sm" style={{ color: "var(--text-dim)" }}>
-          На указанный email будет отправлено приглашение с логином и пароль для входа.
+          На указанный email будет отправлен логин и одноразовая ссылка для установки пароля.
         </p>
         <div>
           <label className="label">Email организатора</label>
@@ -151,11 +155,11 @@ function InviteModal({ onClose, onInvite }) {
             placeholder="organizer@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSubmit()}
             data-testid="organizers-invite-email"
           />
         </div>
-      </div>
+        {error && <div role="alert" className="text-sm" style={{ color: "var(--danger)" }}>{error}</div>}
+      </form>
     </Modal>
   );
 }
