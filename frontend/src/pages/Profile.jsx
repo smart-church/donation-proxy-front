@@ -10,6 +10,7 @@ export default function Profile() {
   const [profile, setProfile] = useState(null);
   const [lastEvent, setLastEvent] = useState(null);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [profileErrors, setProfileErrors] = useState({});
   const [savingPw, setSavingPw] = useState(false);
   const [passwords, setPasswords] = useState({ current: "", next: "", confirm: "" });
   const [pwError, setPwError] = useState("");
@@ -25,11 +26,36 @@ export default function Profile() {
   const isMe = user?.id === profile.id;
 
   const saveProfile = async () => {
+    const nameParts = profile.full_name.trim().split(/\s+/).filter(Boolean);
+    const validationErrors = {};
+    if (nameParts.length < 2) validationErrors.full_name = "Укажите имя и фамилию.";
+    else if (nameParts[0].length > 150 || nameParts.slice(1).join(" ").length > 150) {
+      validationErrors.full_name = "Имя и фамилия не должны превышать 150 символов каждое.";
+    }
+    if (!/^\S+@\S+\.\S+$/.test(profile.email.trim())) validationErrors.email = "Введите корректный email.";
+    if (Object.keys(validationErrors).length) {
+      setProfileErrors(validationErrors);
+      return;
+    }
+
     setSavingProfile(true);
-    await api.updateProfile({ full_name: profile.full_name, email: profile.email });
-    await refreshUser();
-    setSavingProfile(false);
-    notify("Профиль обновлён", "success");
+    setProfileErrors({});
+    try {
+      await api.updateProfile({ full_name: profile.full_name, email: profile.email.trim() });
+      await refreshUser();
+      notify("Профиль обновлён", "success");
+    } catch (error) {
+      const fieldErrors = error.field_errors || {};
+      setProfileErrors({
+        full_name: fieldErrors.first_name || fieldErrors.last_name,
+        email: fieldErrors.email,
+      });
+      if (!fieldErrors.first_name && !fieldErrors.last_name && !fieldErrors.email) {
+        notify(error.message_ru || "Не удалось обновить профиль.", "error");
+      }
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   const savePw = async () => {
@@ -96,20 +122,31 @@ export default function Profile() {
                   <div>
                     <label className="label">ФИО</label>
                     <input
-                      className="input"
+                      className={`input ${profileErrors.full_name ? "error" : ""}`}
                       value={profile.full_name}
-                      onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
+                      onChange={(e) => {
+                        setProfile({ ...profile, full_name: e.target.value });
+                        setProfileErrors({ ...profileErrors, full_name: "" });
+                      }}
+                      maxLength={301}
                       data-testid="profile-full-name"
                     />
+                    {profileErrors.full_name && <div className="text-xs mt-1" role="alert" style={{ color: "var(--danger)" }}>{profileErrors.full_name}</div>}
                   </div>
                   <div>
                     <label className="label">Электронная почта</label>
                     <input
-                      className="input"
+                      type="email"
+                      className={`input ${profileErrors.email ? "error" : ""}`}
                       value={profile.email}
-                      onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                      onChange={(e) => {
+                        setProfile({ ...profile, email: e.target.value });
+                        setProfileErrors({ ...profileErrors, email: "" });
+                      }}
+                      maxLength={254}
                       data-testid="profile-email"
                     />
+                    {profileErrors.email && <div className="text-xs mt-1" role="alert" style={{ color: "var(--danger)" }}>{profileErrors.email}</div>}
                   </div>
                   <button onClick={saveProfile} className="btn btn-primary" disabled={savingProfile} data-testid="profile-save">
                     {savingProfile ? <span className="spinner" /> : <Save size={14} />} Сохранить

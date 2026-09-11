@@ -13,6 +13,14 @@ const quillModules = {
   toolbar: [["bold", "italic", "underline"], [{ list: "ordered" }, { list: "bullet" }], ["link"], ["clean"]],
 };
 
+const validateTemplate = (template) => {
+  const errors = {};
+  if (!template.name.trim()) errors.name = "Введите название шаблона.";
+  if (!template.subject.trim()) errors.subject = "Введите тему письма.";
+  if (!template.body.trim()) errors.body = "Введите текст письма.";
+  return errors;
+};
+
 export default function MailTemplates() {
   const { eventId } = useParams();
   const { notify } = useApp();
@@ -41,7 +49,7 @@ export default function MailTemplates() {
       label: "Название",
       sortable: true,
       render: (t) => (
-        <button className="link font-medium" onClick={() => setSelected(t)} data-testid={`template-open-${t.id}`}>
+        <button className="link font-medium" onClick={async () => setSelected(await api.getTemplate(eventId, t.id))} data-testid={`template-open-${t.id}`}>
           {t.name}
         </button>
       ),
@@ -68,8 +76,8 @@ export default function MailTemplates() {
             >
               <button
                 className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-[color:var(--bg-elev-2)] flex items-center gap-2"
-                onClick={() => {
-                  setSelected(t);
+                onClick={async () => {
+                  setSelected(await api.getTemplate(eventId, t.id));
                   setMenuOpen(null);
                 }}
                 data-testid={`template-edit-${t.id}`}
@@ -133,16 +141,29 @@ export default function MailTemplates() {
 }
 
 function TemplateCreate({ eventId, onClose, onCreated }) {
+  const { notify } = useApp();
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState({});
 
   const save = async () => {
+    const validationErrors = validateTemplate({ name, subject, body });
+    if (Object.keys(validationErrors).length) {
+      setErrors(validationErrors);
+      return;
+    }
     setSaving(true);
-    await api.createTemplate(eventId, { name, subject, body });
-    setSaving(false);
-    onCreated();
+    setErrors({});
+    try {
+      await api.createTemplate(eventId, { name: name.trim(), subject: subject.trim(), body });
+      onCreated();
+    } catch (error) {
+      notify(error.message_ru || "Не удалось создать шаблон", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -164,15 +185,18 @@ function TemplateCreate({ eventId, onClose, onCreated }) {
       <div className="space-y-3">
         <div>
           <label className="label">Название</label>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} data-testid="template-name" />
+          <input className={`input ${errors.name ? "error" : ""}`} value={name} maxLength={255} onChange={(e) => { setName(e.target.value); setErrors({ ...errors, name: "" }); }} data-testid="template-name" />
+          {errors.name && <div className="text-xs mt-1" role="alert" style={{ color: "var(--danger)" }}>{errors.name}</div>}
         </div>
         <div>
           <label className="label">Тема</label>
-          <input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} />
+          <input className={`input ${errors.subject ? "error" : ""}`} value={subject} maxLength={255} onChange={(e) => { setSubject(e.target.value); setErrors({ ...errors, subject: "" }); }} />
+          {errors.subject && <div className="text-xs mt-1" role="alert" style={{ color: "var(--danger)" }}>{errors.subject}</div>}
         </div>
         <div>
           <label className="label">Текст</label>
-          <ReactQuill theme="snow" value={body} onChange={setBody} modules={quillModules} />
+          <ReactQuill theme="snow" value={body} onChange={(value) => { setBody(value); setErrors({ ...errors, body: "" }); }} modules={quillModules} />
+          {errors.body && <div className="text-xs mt-1" role="alert" style={{ color: "var(--danger)" }}>{errors.body}</div>}
         </div>
       </div>
     </Modal>
@@ -185,13 +209,25 @@ function TemplateView({ eventId, template, onBack }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [errors, setErrors] = useState({});
 
   const save = async () => {
+    const validationErrors = validateTemplate(tpl);
+    if (Object.keys(validationErrors).length) {
+      setErrors(validationErrors);
+      return;
+    }
     setSaving(true);
-    await api.updateTemplate(eventId, tpl.id, { name: tpl.name, subject: tpl.subject, body: tpl.body });
-    setSaving(false);
-    setEditing(false);
-    notify("Шаблон обновлён", "success");
+    setErrors({});
+    try {
+      await api.updateTemplate(eventId, tpl.id, { name: tpl.name.trim(), subject: tpl.subject.trim(), body: tpl.body });
+      setEditing(false);
+      notify("Шаблон обновлён", "success");
+    } catch (error) {
+      notify(error.message_ru || "Не удалось обновить шаблон", "error");
+    } finally {
+      setSaving(false);
+    }
   };
   const del = async () => {
     await api.deleteTemplate(eventId, tpl.id);
@@ -209,15 +245,18 @@ function TemplateView({ eventId, template, onBack }) {
           <>
             <div>
               <label className="label">Название</label>
-              <input className="input" value={tpl.name} onChange={(e) => setTpl({ ...tpl, name: e.target.value })} />
+              <input className={`input ${errors.name ? "error" : ""}`} value={tpl.name} maxLength={255} onChange={(e) => { setTpl({ ...tpl, name: e.target.value }); setErrors({ ...errors, name: "" }); }} />
+              {errors.name && <div className="text-xs mt-1" role="alert" style={{ color: "var(--danger)" }}>{errors.name}</div>}
             </div>
             <div>
               <label className="label">Тема</label>
-              <input className="input" value={tpl.subject} onChange={(e) => setTpl({ ...tpl, subject: e.target.value })} />
+              <input className={`input ${errors.subject ? "error" : ""}`} value={tpl.subject} maxLength={255} onChange={(e) => { setTpl({ ...tpl, subject: e.target.value }); setErrors({ ...errors, subject: "" }); }} />
+              {errors.subject && <div className="text-xs mt-1" role="alert" style={{ color: "var(--danger)" }}>{errors.subject}</div>}
             </div>
             <div>
               <label className="label">Текст</label>
-              <ReactQuill theme="snow" value={tpl.body} onChange={(v) => setTpl({ ...tpl, body: v })} modules={quillModules} />
+              <ReactQuill theme="snow" value={tpl.body} onChange={(v) => { setTpl({ ...tpl, body: v }); setErrors({ ...errors, body: "" }); }} modules={quillModules} />
+              {errors.body && <div className="text-xs mt-1" role="alert" style={{ color: "var(--danger)" }}>{errors.body}</div>}
             </div>
           </>
         ) : (

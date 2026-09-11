@@ -25,7 +25,7 @@ export function MailOutbox() {
       label: "Тема",
       sortable: true,
       render: (m) => (
-        <button className="link font-medium" onClick={() => setSelected(m)} data-testid={`mail-open-${m.id}`}>
+        <button className="link font-medium" onClick={async () => setSelected(await api.getMailItem(eventId, m.id))} data-testid={`mail-open-${m.id}`}>
           {m.subject || "(без темы)"}
         </button>
       ),

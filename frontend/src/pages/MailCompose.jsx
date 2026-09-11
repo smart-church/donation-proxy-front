@@ -9,6 +9,7 @@ import { useApp } from "../components/AppContext";
 const quillModules = {
   toolbar: [["bold", "italic", "underline"], [{ list: "ordered" }, { list: "bullet" }], ["link"], ["clean"]],
 };
+const isValidEmail = (value) => /^\S+@\S+\.\S+$/.test(value);
 
 export default function MailCompose() {
   const { eventId } = useParams();
@@ -42,7 +43,16 @@ export default function MailCompose() {
   }, [query, eventId]);
 
   const addRecipient = (email) => {
-    setRecipients((r) => (r.includes(email) ? r : [...r, email]));
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!isValidEmail(normalizedEmail)) {
+      notify("Введите корректный email получателя", "error");
+      return;
+    }
+    setRecipients((current) => (
+      current.some((item) => item.toLowerCase() === normalizedEmail)
+        ? current
+        : [...current, normalizedEmail]
+    ));
     setQuery("");
   };
   const removeRecipient = (email) => setRecipients((r) => r.filter((x) => x !== email));
@@ -56,15 +66,31 @@ export default function MailCompose() {
       notify("Введите тему письма", "error");
       return;
     }
+    if (recipients.some((email) => !isValidEmail(email))) {
+      notify("Проверьте email получателей", "error");
+      return;
+    }
     setSending(true);
-    await api.sendMail(eventId, { recipients, template_id: templateId || null, subject, body });
-    setSending(false);
-    notify("Письмо отправлено (mock)", "success");
-    navigate(`/events/${eventId}/mail`);
+    try {
+      await api.sendMail(eventId, { recipients, template_id: templateId || null, subject, body });
+      notify("Письмо отправлено", "success");
+      navigate(`/events/${eventId}/mail`);
+    } catch (error) {
+      notify(error.message_ru || "Не удалось отправить письмо", "error");
+    } finally {
+      setSending(false);
+    }
   };
 
   const usingTemplate = !!templateId;
-  const selectedTemplate = useMemo(() => templates.find((t) => t.id === templateId), [templates, templateId]);
+  const selectedTemplate = useMemo(() => templates.find((t) => String(t.id) === String(templateId)), [templates, templateId]);
+
+  useEffect(() => {
+    if (!templateId || selectedTemplate?.body !== undefined) return;
+    api.getTemplate(eventId, templateId).then((template) => {
+      setTemplates((current) => current.map((item) => String(item.id) === String(template.id) ? template : item));
+    });
+  }, [eventId, templateId, selectedTemplate]);
 
   return (
     <div className="max-w-3xl">
@@ -99,7 +125,7 @@ export default function MailCompose() {
               data-testid="recipient-input"
             />
           </div>
-          {(suggestions.length > 0 || (query.includes("@") && !recipients.includes(query.trim()))) && (
+          {(suggestions.length > 0 || (isValidEmail(query.trim()) && !recipients.includes(query.trim().toLowerCase()))) && (
             <div className="mt-1 surface p-1">
               {/* Participant suggestions */}
               {suggestions.map((s) => (
@@ -114,7 +140,7 @@ export default function MailCompose() {
               ))}
               
               {/* Custom email option */}
-              {query.includes("@") && !recipients.includes(query.trim()) && (
+              {isValidEmail(query.trim()) && !recipients.includes(query.trim().toLowerCase()) && (
                 <button
                   onClick={() => addRecipient(query.trim())}
                   className="w-full text-left px-3 py-2 rounded-md hover:bg-[color:var(--bg-elev-2)] text-sm border-t"

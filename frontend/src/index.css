@@ -234,6 +234,16 @@ body {
 }
 .ql-container.ql-snow { border-radius: 0 0 10px 10px; min-height: 180px; color: var(--text); }
 .ql-toolbar.ql-snow { border-radius: 10px 10px 0 0; }
+.event-description-editor .ql-container.ql-snow {
+  display: flex;
+  flex-direction: column;
+}
+.event-description-editor .ql-editor {
+  flex: 1;
+  min-height: 180px;
+  width: 100%;
+  cursor: text;
+}
 [data-theme="dark"] .ql-snow .ql-stroke { stroke: var(--text-dim); }
 [data-theme="dark"] .ql-snow .ql-fill { fill: var(--text-dim); }
 [data-theme="dark"] .ql-snow .ql-picker { color: var(--text-dim); }

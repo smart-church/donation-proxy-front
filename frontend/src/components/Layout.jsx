@@ -22,23 +22,70 @@ import { cn } from "../lib/utils";
 
 function useEventContext() {
   const location = useLocation();
-  const [event, setEvent] = useState(null);
+  const { activeEvent, setActiveEvent } = useApp();
 
   // Match /events/:id/... or /participant/:pid (with ?event=...)
   const m = location.pathname.match(/^\/events\/([^/]+)/);
-  let eventId = m ? m[1] : null;
-  if (!eventId && location.pathname.startsWith("/participant/")) {
+  let routeEventId = m ? m[1] : null;
+  if (!routeEventId && location.pathname.startsWith("/participant/")) {
     const search = new URLSearchParams(location.search);
-    eventId = search.get("event");
+    routeEventId = search.get("event");
   }
   // Ignore "create" special path
-  if (eventId === "create") eventId = null;
+  if (routeEventId === "create") routeEventId = null;
+
+  const [eventId, setEventId] = useState(
+    () => routeEventId || api.getLastViewedEventId(),
+  );
 
   useEffect(() => {
-    if (!eventId) return setEvent(null);
-    api.getEvent(eventId).then(setEvent).catch(() => setEvent(null));
-  }, [eventId]);
-  return { event, eventId };
+    let cancelled = false;
+
+    const loadEvent = async () => {
+      const cachedEventId = api.getLastViewedEventId();
+      const nextEventId = routeEventId || cachedEventId;
+
+      if (!nextEventId) {
+        setEventId(null);
+        setActiveEvent(null);
+        return;
+      }
+
+      setEventId(nextEventId);
+      try {
+        const event = await api.getEvent(nextEventId);
+        if (cancelled) return;
+        setActiveEvent(event);
+        if (routeEventId) await api.recordEventView(nextEventId);
+      } catch {
+        if (cancelled) return;
+
+        // Недоступный ID из адреса не должен уничтожать ранее рабочий кеш.
+        if (routeEventId && cachedEventId && cachedEventId !== routeEventId) {
+          try {
+            const cachedEvent = await api.getEvent(cachedEventId);
+            if (cancelled) return;
+            setEventId(cachedEventId);
+            setActiveEvent(cachedEvent);
+            return;
+          } catch {
+            // Кеш тоже устарел — очищаем его ниже.
+          }
+        }
+
+        if (api.getLastViewedEventId() === nextEventId) {
+          api.clearLastViewedEvent();
+        }
+        setEventId(null);
+        setActiveEvent(null);
+      }
+    };
+
+    loadEvent();
+    return () => { cancelled = true; };
+  }, [routeEventId, setActiveEvent]);
+
+  return { event: activeEvent, eventId };
 }
 
 function SideLink({ to, icon: Icon, label, end, testid }) {
@@ -101,7 +148,7 @@ export default function Layout({ children }) {
           {eventScope ? (
             <>
               <SideLink to={`${eventScope}/mail/create`} icon={Send} label="Написать" testid="side-mail-create" />
-              <SideLink to={`${eventScope}/mail`} icon={Inbox} label="Исходящие" testid="side-mail-outbox" />
+              <SideLink to={`${eventScope}/mail`} icon={Inbox} label="Исходящие" testid="side-mail-outbox" end />
               <SideLink
                 to={`${eventScope}/mail-templates`}
                 icon={FileText}
@@ -124,8 +171,13 @@ export default function Layout({ children }) {
             </>
           )}
 
-          <div className="side-heading">Администрация</div>
-          <SideLink to="/admins" icon={Shield} label="Администраторы" testid="side-admins" />
+          {user?.is_admin && (
+            <>
+              <div className="side-heading">Администрация</div>
+              <SideLink to="/organizers" icon={Users} label="Пользователи" testid="side-organizers" />
+              <SideLink to="/admins" icon={Shield} label="Администраторы" testid="side-admins" />
+            </>
+          )}
         </nav>
 
         {/* Theme toggle */}
@@ -201,7 +253,7 @@ export default function Layout({ children }) {
           style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
         >
           <span>Evman © 2026</span>
-          <span>Регистрация участников — mock-режим</span>
+          <span>Регистрация участников</span>
         </footer>
       </div>
     </div>
