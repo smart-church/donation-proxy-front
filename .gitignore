@@ -6,3 +6,4 @@ credentials.json
 *.key
 .credentials
 frontend/node_modules
+frontend/build

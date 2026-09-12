@@ -1,5 +1,7 @@
 # donation-proxy-front
 
+[Деплой UI и backend на REG.RU / ISPmanager](docs/wiki/deploy.md).
+
 ## Локальный запуск вместе с API
 
 Сначала запустите MySQL и Django из соседнего репозитория:
