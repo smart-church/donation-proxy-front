@@ -143,7 +143,7 @@ export function PublicForm() {
         )}
         <div className="pt-3">
           <button type="submit" className="btn btn-primary w-full !text-base" disabled={!isValid || submitting || Object.values(busyFields).some(Boolean)} data-testid="public-form-submit">
-            {submitting ? <span className="spinner" /> : <Check size={14} />} Отправить заявку
+            {submitting ? <span className="spinner" /> : <Check size={14} />} Зарегистрироваться
           </button>
         </div>
       </form>
