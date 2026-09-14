@@ -67,7 +67,7 @@ export default function ParticipantsList() {
     ];
     const extra = form.fields
       .filter((f) => f.type !== "full_name" && f.type !== "email" && f.type !== "filler")
-      .map((f) => ({ id: f.id, label: f.title, value: (p) => renderAnswer(p.answers?.[f.id]) }));
+      .map((f) => ({ id: f.id, label: form.fields.filter((other) => other.title === f.title).length > 1 ? `${f.title} (#${f.id})` : f.title, value: (p) => renderAnswer(p.answers?.[f.id]) }));
     return [...base, ...extra];
   }, [form]);
 

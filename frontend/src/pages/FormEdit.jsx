@@ -10,12 +10,14 @@ import {
   X,
   ChevronRight,
 } from "lucide-react";
+import FileQuestionSettings from "../components/FileQuestionSettings";
 import useEditableForm from "../hooks/useEditableForm";
 import FormResources, { ResourceList } from "../components/FormResources";
 import { useApp } from "../components/AppContext";
 
 const FIELD_TYPES = [
   { value: "text", label: "Текст" },
+  { value: "file", label: "Загрузка файлов" },
   { value: "textarea", label: "Многострочный текст" },
   { value: "email", label: "Email" },
   { value: "full_name", label: "ФИО" },
@@ -206,7 +208,7 @@ function FieldEditor({ eventId, onUploadBusy, onResourcesChange, structureDisabl
               <Settings size={12} /> Настройки
             </div>
             {error && <button className="btn btn-ghost" disabled={disabled || structureDisabled} onClick={onRetry}>Повторить сохранение</button>}
-            <FieldSettings field={field} onPatch={onPatch} isProtected={isProtected} disabled={disabled} error={error} getAvailableFieldTypes={getAvailableFieldTypes} />
+            <FieldSettings eventId={eventId} field={field} onPatch={onPatch} isProtected={isProtected} disabled={disabled} error={error} getAvailableFieldTypes={getAvailableFieldTypes} />
             <FormResources eventId={eventId} resources={field.resources || []} onChange={onResourcesChange} onBusyChange={onUploadBusy} disabled={disabled} />
           </div>
         </div>
@@ -241,7 +243,9 @@ function FieldPreview({ field, eventId }) {
       )}
       <ResourceList eventId={eventId} resources={field.resources} />
       <div className="mt-2">
-        {field.type === "textarea" ? (
+        {field.type === "file" ? (
+          <input type="file" disabled multiple className="input" />
+        ) : field.type === "textarea" ? (
           <textarea disabled placeholder={field.placeholder} className="input" rows={3} />
         ) : field.type === "date" ? (
           <input type="date" disabled className="input" />
@@ -266,9 +270,9 @@ function FieldPreview({ field, eventId }) {
   );
 }
 
-function FieldSettings({ field, onPatch, isProtected, disabled, error, getAvailableFieldTypes }) {
+function FieldSettings({ eventId, field, onPatch, isProtected, disabled, error, getAvailableFieldTypes }) {
   const showOptions = field.type === "checkbox" || field.type === "radio";
-  const showPlaceholder = !["filler", "checkbox", "radio"].includes(field.type);
+  const showPlaceholder = !["filler", "checkbox", "radio", "file"].includes(field.type);
   const availableTypes = getAvailableFieldTypes ? getAvailableFieldTypes(field) : FIELD_TYPES;
   
   return (
@@ -324,6 +328,8 @@ function FieldSettings({ field, onPatch, isProtected, disabled, error, getAvaila
         />
       </div>
 
+      {field.type === "file" && <FileQuestionSettings eventId={eventId} value={field.file_limits}
+        onChange={(file_limits) => onPatch({ file_limits })} disabled={disabled} />}
       {showOptions && (
         <div>
           <label className="label">Варианты ответа</label>

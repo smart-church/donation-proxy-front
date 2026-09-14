@@ -1,8 +1,9 @@
 import { ResourceList } from "../components/FormResources";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Check, AlertTriangle } from "lucide-react";
 import * as api from "../mock/api";
+import PublicFileAnswer from "../components/PublicFileAnswer";
 import SafeHtml from "../components/SafeHtml";
 import churchLogo from "../assets/church-logo.svg";
 
@@ -16,17 +17,26 @@ export function PublicForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const uploadSession = useRef(null);
+  const [busyFields, setBusyFields] = useState({});
+  const getSession = () => {
+    const session = uploadSession.current;
+    if (!session || session.eventId !== eventId) return Promise.reject(new Error("Анкета изменилась"));
+    if (!session.promise) session.promise = api.createFormUploadSession(eventId, session.abort.signal)
+      .then((result) => result.token).catch((error) => { session.promise = null; throw error; });
+    return session.promise;
+  };
 
   useEffect(() => {
-    (async () => {
-      try {
-        const publicForm = await api.getPublicForm(eventId);
-        setEv(publicForm.event);
-        setForm({ fields: publicForm.fields });
-      } catch (err) {
-        setError(err.message_ru || "Не удалось загрузить анкету.");
-      }
-    })();
+    const session = { eventId, promise: null, abort: new AbortController() };
+    uploadSession.current = session;
+    let alive = true;
+    setEv(null); setData({}); setCustomValues({}); setBusyFields({}); setError("");
+    api.getPublicForm(eventId, session.abort.signal).then((publicForm) => {
+      if (!alive) return;
+      setEv(publicForm.event); setForm({ fields: publicForm.fields });
+    }).catch((err) => { if (alive) setError(err.message_ru || "Не удалось загрузить анкету."); });
+    return () => { alive = false; session.abort.abort(); };
   }, [eventId]);
 
   if (error && !ev) {
@@ -67,10 +77,12 @@ export function PublicForm() {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (submitting || Object.values(busyFields).some(Boolean)) return;
     setError("");
     setSubmitting(true);
     try {
-      await api.submitParticipant(eventId, data, form.fields, customValues);
+      const token = form.fields.some((f) => f.type === "file") ? await getSession() : undefined;
+      await api.submitParticipant(eventId, data, form.fields, customValues, token);
       navigate(`/form/${eventId}/success`);
     } catch (err) {
       setError(err.message_ru || ev.fail_form_description || "Не удалось отправить анкету.");
@@ -111,9 +123,13 @@ export function PublicForm() {
             key={f.id}
             field={f}
             eventId={eventId}
+            getSession={getSession}
+            uploadEnabled={ev.public_upload_enabled}
+            disabled={submitting}
+            onUploadBusy={(busy) => setBusyFields((current) => current[f.id] === busy ? current : { ...current, [f.id]: busy })}
             value={data[f.id]}
             customValue={customValues[f.id]}
-            onChange={(v) => setData((current) => ({ ...current, [f.id]: v }))}
+            onChange={(v) => setData((current) => ({ ...current, [f.id]: typeof v === "function" ? v(current[f.id] || []) : v }))}
             onCustomChange={(v) => setCustomValue(f.id, v)}
           />
         ))}
@@ -126,7 +142,7 @@ export function PublicForm() {
           </div>
         )}
         <div className="pt-3">
-          <button type="submit" className="btn btn-primary w-full !text-base" disabled={!isValid || submitting} data-testid="public-form-submit">
+          <button type="submit" className="btn btn-primary w-full !text-base" disabled={!isValid || submitting || Object.values(busyFields).some(Boolean)} data-testid="public-form-submit">
             {submitting ? <span className="spinner" /> : <Check size={14} />} Отправить заявку
           </button>
         </div>
@@ -139,7 +155,7 @@ function optionName(option) {
   return typeof option === "object" && option !== null ? option.name : option;
 }
 
-function PublicField({ eventId, field, value, customValue, onChange, onCustomChange }) {
+function PublicField({ eventId, getSession, onUploadBusy, uploadEnabled, disabled, field, value, customValue, onChange, onCustomChange }) {
   if (field.type === "filler") {
     return (
       <div className="pt-2">
@@ -159,7 +175,10 @@ function PublicField({ eventId, field, value, customValue, onChange, onCustomCha
       {label}
       {field.description && <div className="text-sm mb-2" style={{ color: "var(--text-muted)" }}>{field.description}</div>}
       <ResourceList publicView eventId={eventId} resources={field.resources} />
-      {field.type === "textarea" ? (
+      {field.type === "file" ? (
+        <PublicFileAnswer eventId={eventId} field={field} files={value || []} onChange={onChange}
+          getSession={getSession} onBusyChange={onUploadBusy} enabled={uploadEnabled} disabled={disabled} />
+      ) : field.type === "textarea" ? (
         <textarea rows={3} className="input !text-base" placeholder={field.placeholder} value={value || ""} onChange={(e) => onChange(e.target.value)} />
       ) : field.type === "date" ? (
         <input type="date" className="input !text-base" value={value || ""} onChange={(e) => onChange(e.target.value)} />
