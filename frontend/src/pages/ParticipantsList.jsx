@@ -4,6 +4,7 @@ import { Users, CheckCircle2, Clock, XCircle, Download, Plus, Filter, X } from "
 import * as XLSX from "xlsx";
 import * as api from "../mock/api";
 import DataTable from "../components/DataTable";
+import ParticipantCreate from "../components/ParticipantCreate";
 import { formatDateShort } from "../lib/utils";
 
 function StatCard({ icon: Icon, label, value, kind, testid }) {
@@ -49,15 +50,21 @@ export default function ParticipantsList() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 20;
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
+    let active = true;
+    setCreating(false);
+    setLoading(true);
     (async () => {
       const [f, p] = await Promise.all([api.getForm(eventId), api.listParticipants(eventId)]);
+      if (!active) return;
       setForm(f);
       setParticipants(p);
       setCurrentPage(1);
       setLoading(false);
     })();
+    return () => { active = false; };
   }, [eventId]);
 
   const dynamicCols = useMemo(() => {
@@ -67,7 +74,7 @@ export default function ParticipantsList() {
     ];
     const extra = form.fields
       .filter((f) => f.type !== "full_name" && f.type !== "email" && f.type !== "filler")
-      .map((f) => ({ id: f.id, label: f.title, value: (p) => renderAnswer(p.answers?.[f.id]) }));
+      .map((f) => ({ id: f.id, label: form.fields.filter((other) => other.title === f.title).length > 1 ? `${f.title} (#${f.id})` : f.title, value: (p) => renderAnswer(p.answers?.[f.id]) }));
     return [...base, ...extra];
   }, [form]);
 
@@ -142,16 +149,22 @@ export default function ParticipantsList() {
 
   const exportXlsx = () => {
     // Always export all participants, not just filtered ones
-    const rows = participants.map((p, i) => {
-      const row = { "#": i + 1, "ФИО": p.full_name, "Почта": p.email, "Статус": statusMap(p.status) };
-      selectedCols.forEach((cid) => {
-        if (cid === "email" || cid === "status") return;
-        const c = dynamicCols.find((x) => x.id === cid);
-        if (c) row[c.label] = c.value(p);
-      });
-      return row;
+    const headers = ["#", "ФИО", "Почта", "Статус"];
+    const usedHeaders = new Set(headers);
+    const extraColumns = selectedCols.filter((id) => id !== "email" && id !== "status")
+      .map((id) => dynamicCols.find((column) => column.id === id)).filter(Boolean);
+    extraColumns.forEach((column) => {
+      let label = column.label;
+      if (usedHeaders.has(label)) label = `${column.label} (#${column.id})`;
+      const base = label;
+      for (let suffix = 2; usedHeaders.has(label); suffix += 1) label = `${base} (${suffix})`;
+      usedHeaders.add(label);
+      headers.push(label);
     });
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const rows = participants.map((p, i) => [
+      i + 1, p.full_name, p.email, statusMap(p.status), ...extraColumns.map((column) => column.value(p)),
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Участники");
     XLSX.writeFile(wb, `participants-${eventId}.xlsx`);
@@ -250,11 +263,19 @@ export default function ParticipantsList() {
           <button className="btn btn-ghost" onClick={exportXlsx} data-testid="participants-export">
             <Download size={14} /> Скачать таблицу
           </button>
-          <button className="btn btn-primary" data-testid="participants-add">
+          <button className="btn btn-primary" disabled={loading} onClick={() => setCreating(true)} data-testid="participants-add">
             <Plus size={14} /> Добавить участника
           </button>
         </div>
       </div>
+
+      {creating && <ParticipantCreate key={eventId} eventId={eventId} formFields={form.fields}
+        onClose={() => setCreating(false)} onCreated={(participant) => {
+          setParticipants((current) => [...current, participant]);
+          setCurrentPage(Math.ceil((participants.length + 1) / PAGE_SIZE));
+          setColFilters({});
+          setCreating(false);
+        }} />}
 
       {loading ? (
         <div className="surface p-12 text-center" style={{ color: "var(--text-muted)" }}>

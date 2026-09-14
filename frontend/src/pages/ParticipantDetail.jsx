@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Edit3, Mail, Trash2, Save, X } from "lucide-react";
 import * as api from "../mock/api";
+import AttachmentList from "../components/AttachmentList";
 import Modal from "../components/Modal";
 import { useApp } from "../components/AppContext";
 
@@ -168,7 +169,9 @@ export default function ParticipantDetail() {
           {form.fields.filter((f) => f.type !== "filler" && !f.hidden).map((f) => (
             <div key={f.id}>
               <div className="label">{f.title}</div>
-              {editing ? (
+              {f.type === "file" ? (
+                <AttachmentList eventId={eventId} files={(participant.file_answers || []).find((answer) => String(answer.field_id) === String(f.id))?.files || []} />
+              ) : editing ? (
                 <FieldInput
                   field={f}
                   value={draft[f.id]}

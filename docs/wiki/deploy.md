@@ -326,3 +326,23 @@ tail -n 50 ~/logs/dev-evman-worker.log
 | `collectstatic` требует `STATIC_ROOT` | Запускайте с `--settings=config.settings_hosting`. |
 | Письма остаются в очереди | Проверьте worker, cron, журнал задач и SMTP-реквизиты. |
 | SSH долго не отвечает | Используйте `ConnectTimeout=180`; закрытие соединения сервером этот параметр не исправляет. |
+
+
+## Файловые ответы участников (этап D)
+
+Сохраните действующий `.env`. После обновления зависимостей выполните в окружении
+backend `python src/manage.py migrate` (миграция 0014) и
+`python src/manage.py collectstatic --noinput`; Django-форма использует новый
+скрипт `proxy/form_uploads.js`. Перезапустите backend и worker. Соберите UI.
+
+Публичная загрузка требует рабочего `clamscan`/`clamdscan` с актуальной базой;
+укажите путь в `FILE_ANTIVIRUS_EXECUTABLE`. Без сканера сервер отклоняет загрузки,
+включая режим `FILE_ANTIVIRUS_REQUIRED=false`. Для временного выключения используйте
+`PUBLIC_FILE_UPLOAD_ENABLED=false`. Не публикуйте PRIVATE_FILES_ROOT.
+
+Настройте `PUBLIC_UPLOAD_*` квоты под диск хостинга, проверьте multipart и лимиты
+web-сервера. `PUBLIC_UPLOAD_TRUSTED_PROXIES` должен содержать только точные IP
+ваших reverse proxy; по умолчанию заголовкам X-Forwarded-For не доверяем.
+Плановая `cleanup_files --apply` удаляет временные файлы и истёкшие сессии,
+но сохраняет файловые ответы участников. Реальную приёмку выполняйте на тестовой
+анкете без рассылки писем посторонним адресатам.

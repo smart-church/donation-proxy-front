@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   Plus,
@@ -10,11 +10,14 @@ import {
   X,
   ChevronRight,
 } from "lucide-react";
-import * as api from "../mock/api";
+import FileQuestionSettings from "../components/FileQuestionSettings";
+import useEditableForm from "../hooks/useEditableForm";
+import FormResources, { ResourceList } from "../components/FormResources";
 import { useApp } from "../components/AppContext";
 
 const FIELD_TYPES = [
   { value: "text", label: "Текст" },
+  { value: "file", label: "Загрузка файлов" },
   { value: "textarea", label: "Многострочный текст" },
   { value: "email", label: "Email" },
   { value: "full_name", label: "ФИО" },
@@ -36,86 +39,9 @@ const validateField = (field) => {
 
 export default function FormEdit() {
   const { eventId } = useParams();
-  const [form, setForm] = useState({ fields: [] });
-  const [loading, setLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState("idle"); // idle | saving | saved
-  const [fieldErrors, setFieldErrors] = useState({});
-  const timersRef = useRef({});
   const { notify } = useApp();
-
-  useEffect(() => {
-    api.getForm(eventId).then((f) => {
-      setForm(f);
-      setLoading(false);
-    });
-  }, [eventId]);
-
-  const debounceSave = (fieldId, patch) => {
-    setSaveStatus("saving");
-    clearTimeout(timersRef.current[fieldId]);
-    timersRef.current[fieldId] = setTimeout(async () => {
-      try {
-        await api.patchField(eventId, fieldId, patch);
-        setSaveStatus("saved");
-        setTimeout(() => setSaveStatus("idle"), 1200);
-      } catch (error) {
-        setSaveStatus("error");
-        setFieldErrors((current) => ({ ...current, [fieldId]: error.message_ru }));
-      }
-    }, 700);
-  };
-
-  const patchLocal = (fieldId, patch) => {
-    const currentField = form.fields.find((field) => field.id === fieldId);
-    const nextField = { ...currentField, ...patch };
-    setForm((f) => ({
-      ...f,
-      fields: f.fields.map((x) => (x.id === fieldId ? nextField : x)),
-    }));
-    const validationError = validateField(nextField);
-    if (validationError) {
-      clearTimeout(timersRef.current[fieldId]);
-      setSaveStatus("error");
-      setFieldErrors((current) => ({ ...current, [fieldId]: validationError }));
-      return;
-    }
-    setFieldErrors((current) => {
-      const next = { ...current };
-      delete next[fieldId];
-      return next;
-    });
-    debounceSave(fieldId, nextField);
-  };
-
-  const addField = async () => {
-    try {
-      await api.addField(eventId, { type: "text", title: "Новый вопрос" });
-      const f = await api.getForm(eventId);
-      setForm(f);
-    } catch (error) {
-      notify(error.message_ru || "Не удалось добавить поле", "error");
-    }
-  };
-
-  const move = async (fieldId, dir) => {
-    try {
-      await api.moveField(eventId, fieldId, dir);
-      const f = await api.getForm(eventId);
-      setForm(f);
-    } catch (error) {
-      notify(error.message_ru || "Не удалось переместить поле", "error");
-    }
-  };
-
-  const remove = async (fieldId) => {
-    try {
-      await api.removeField(eventId, fieldId);
-      const f = await api.getForm(eventId);
-      setForm(f);
-    } catch (error) {
-      notify(error.message_ru || "Не удалось удалить поле", "error");
-    }
-  };
+  const { form, loading, saveStatus, fieldErrors, structureBusy, uploading, patchLocal,
+    onUploadBusy, addField, move, remove, retry } = useEditableForm(eventId, validateField, notify);
 
   const requiredCount = form.fields.filter((f) => f.required && !f.hidden).length;
   const isFormReadOnly = !!form.registration_started;
@@ -172,12 +98,17 @@ export default function FormEdit() {
             <FieldEditor
               key={field.id}
               field={field}
+              eventId={eventId}
+              onUploadBusy={(busy) => onUploadBusy(field.id, busy)}
+              onResourcesChange={(update) => patchLocal(field.id, (current) => ({ resources: update(current.resources || []) }))}
+              structureDisabled={structureBusy || uploading}
+              onRetry={() => retry(field.id)}
               index={i + 1}
               total={form.fields.length}
               onPatch={(p) => patchLocal(field.id, p)}
               onMove={(dir) => move(field.id, dir)}
               onRemove={() => remove(field.id)}
-              disabled={isFormReadOnly}
+              disabled={isFormReadOnly || structureBusy}
               error={fieldErrors[field.id]}
               getAvailableFieldTypes={getAvailableFieldTypes}
             />
@@ -187,7 +118,7 @@ export default function FormEdit() {
             onClick={addField}
             className="w-full py-4 rounded-xl border-2 border-dashed transition-all font-semibold hover:bg-[color:var(--brand-soft)]"
             style={{ borderColor: "var(--brand)", color: "var(--brand)" }}
-            disabled={isFormReadOnly}
+            disabled={isFormReadOnly || structureBusy || uploading}
           >
             + Добавить поле
           </button>
@@ -215,7 +146,7 @@ function SaveIndicator({ status }) {
   return null;
 }
 
-function FieldEditor({ field, index, total, onPatch, onMove, onRemove, disabled, error, getAvailableFieldTypes }) {
+function FieldEditor({ eventId, onUploadBusy, onResourcesChange, structureDisabled, onRetry, field, index, total, onPatch, onMove, onRemove, disabled, error, getAvailableFieldTypes }) {
   const [expanded, setExpanded] = useState(index === 1);
   const isProtected = field.type === "full_name" || field.type === "email";
 
@@ -234,14 +165,14 @@ function FieldEditor({ field, index, total, onPatch, onMove, onRemove, disabled,
         </div>
         <div className="flex items-center gap-1">
           <span className="chip">{FIELD_TYPES.find((t) => t.value === field.type)?.label}</span>
-          <button className="btn btn-ghost !py-1 !px-2" title="Выше" onClick={() => onMove("up")} disabled={index === 1 || disabled}>
+          <button className="btn btn-ghost !py-1 !px-2" title="Выше" onClick={() => onMove("up")} disabled={index === 1 || disabled || structureDisabled}>
             <ChevronUp size={14} />
           </button>
           <button
             className="btn btn-ghost !py-1 !px-2"
             title="Ниже"
             onClick={() => onMove("down")}
-            disabled={index === total || disabled}
+            disabled={index === total || disabled || structureDisabled}
           >
             <ChevronDown size={14} />
           </button>
@@ -251,7 +182,7 @@ function FieldEditor({ field, index, total, onPatch, onMove, onRemove, disabled,
               title="Удалить"
               onClick={onRemove}
               data-testid={`field-remove-${field.id}`}
-              disabled={disabled}
+              disabled={disabled || structureDisabled}
             >
               <Trash2 size={14} />
             </button>
@@ -269,14 +200,16 @@ function FieldEditor({ field, index, total, onPatch, onMove, onRemove, disabled,
             <div className="text-[11px] uppercase tracking-wider mb-3 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
               👁️ Предпросмотр
             </div>
-            <FieldPreview field={field} />
+            <FieldPreview field={field} eventId={eventId} />
           </div>
           {/* Settings */}
           <div className="p-5" style={{ borderColor: "var(--border)" }}>
             <div className="text-[11px] uppercase tracking-wider mb-3 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
               <Settings size={12} /> Настройки
             </div>
-            <FieldSettings field={field} onPatch={onPatch} isProtected={isProtected} disabled={disabled} error={error} getAvailableFieldTypes={getAvailableFieldTypes} />
+            {error && <button className="btn btn-ghost" disabled={disabled || structureDisabled} onClick={onRetry}>Повторить сохранение</button>}
+            <FieldSettings eventId={eventId} field={field} onPatch={onPatch} isProtected={isProtected} disabled={disabled} error={error} getAvailableFieldTypes={getAvailableFieldTypes} />
+            <FormResources eventId={eventId} resources={field.resources || []} onChange={onResourcesChange} onBusyChange={onUploadBusy} disabled={disabled} />
           </div>
         </div>
       )}
@@ -284,7 +217,7 @@ function FieldEditor({ field, index, total, onPatch, onMove, onRemove, disabled,
   );
 }
 
-function FieldPreview({ field }) {
+function FieldPreview({ field, eventId }) {
   if (field.type === "filler") {
     return (
       <div className="py-4">
@@ -294,6 +227,7 @@ function FieldPreview({ field }) {
             {field.description}
           </div>
         )}
+        <ResourceList eventId={eventId} resources={field.resources} />
       </div>
     );
   }
@@ -307,8 +241,11 @@ function FieldPreview({ field }) {
           {field.description}
         </div>
       )}
+      <ResourceList eventId={eventId} resources={field.resources} />
       <div className="mt-2">
-        {field.type === "textarea" ? (
+        {field.type === "file" ? (
+          <input type="file" disabled multiple className="input" />
+        ) : field.type === "textarea" ? (
           <textarea disabled placeholder={field.placeholder} className="input" rows={3} />
         ) : field.type === "date" ? (
           <input type="date" disabled className="input" />
@@ -333,9 +270,9 @@ function FieldPreview({ field }) {
   );
 }
 
-function FieldSettings({ field, onPatch, isProtected, disabled, error, getAvailableFieldTypes }) {
+function FieldSettings({ eventId, field, onPatch, isProtected, disabled, error, getAvailableFieldTypes }) {
   const showOptions = field.type === "checkbox" || field.type === "radio";
-  const showPlaceholder = !["filler", "checkbox", "radio"].includes(field.type);
+  const showPlaceholder = !["filler", "checkbox", "radio", "file"].includes(field.type);
   const availableTypes = getAvailableFieldTypes ? getAvailableFieldTypes(field) : FIELD_TYPES;
   
   return (
@@ -391,6 +328,8 @@ function FieldSettings({ field, onPatch, isProtected, disabled, error, getAvaila
         />
       </div>
 
+      {field.type === "file" && <FileQuestionSettings eventId={eventId} value={field.file_limits}
+        onChange={(file_limits) => onPatch({ file_limits })} disabled={disabled} />}
       {showOptions && (
         <div>
           <label className="label">Варианты ответа</label>

@@ -314,7 +314,6 @@ function QuillField({ label, value, onChange }) {
     <div>
       <label className="label">{label}</label>
       <ReactQuill
-        className="event-description-editor"
         theme="snow"
         value={value || ""}
         onChange={onChange}
