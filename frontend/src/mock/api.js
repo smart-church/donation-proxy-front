@@ -124,7 +124,7 @@ const userToView = (u) => {
 const eventToView = (e) => ({ ...e, name: e.name ?? e.title, registration_open: e.is_active, auto_mail_enabled: e.use_auto_mail, success_template_id: e.success_form_template });
 const eventToApi = (e) => ({ title: e.name, description: e.description, closed_registration_description: e.closed_registration_description, success_form_description: e.success_form_description, fail_form_description: e.fail_form_description, is_active: e.registration_open, use_auto_mail: e.auto_mail_enabled, success_form_template: e.success_template_id || null });
 const fieldToView = (f) => ({ ...f, hidden: false, allow_other: f.has_custom_option });
-const fieldToApi = (f) => ({ type: f.type, title: f.title, placeholder: f.placeholder || "", description: f.description || "", required: !!f.required, options: f.options || [], has_custom_option: !!f.allow_other });
+const fieldToApi = (f) => ({ type: f.type, title: f.title, placeholder: f.placeholder || "", description: f.description || "", required: !!f.required, options: f.options || [], has_custom_option: !!f.allow_other, ...(f.resources !== undefined ? { resources: f.resources.map((r) => ({ title: r.title || "", ...(r.file_id ? { file_id: r.file_id } : { url: r.url }) })) } : {}) });
 const statusToView = { New: "pending", Accepted: "accepted", Rejected: "rejected" };
 const statusToApi = { pending: "New", accepted: "Accepted", rejected: "Rejected" };
 const participantToView = (p, fields) => {
@@ -164,9 +164,9 @@ export async function deleteEvent(id) { await client.delete(`/api/v1/events/${id
 export async function approveEvent(id) { await client.patch(`/api/v1/events/${id}/approve`); return ok(); }
 export async function disapproveEvent(id) { await client.patch(`/api/v1/events/${id}/disapprove`); return ok(); }
 
-export async function getForm(eventId) { const r = await client.get(`/api/v1/events/${eventId}/form`).then(result); return { ...r, fields: (r.fields || []).map(fieldToView) }; }
+export async function getForm(eventId, signal) { const r = await client.get(`/api/v1/events/${eventId}/form`, { signal }).then(result); return { ...r, fields: (r.fields || []).map(fieldToView) }; }
 export async function getPublicForm(eventId) { const r = await client.get(`/api/v1/public/events/${eventId}/form`).then(result); return { event: eventToView(r.event), fields: (r.fields || []).map(fieldToView) }; }
-export async function patchField(eventId, fieldId, patch) { const form = await getForm(eventId); const field = form.fields.find((f) => String(f.id) === String(fieldId)); await client.put(`/api/v1/events/${eventId}/form`, { order: field.order, field: fieldToApi({ ...field, ...patch }) }); return ok(); }
+export async function patchField(eventId, fieldId, patch, signal) { const form = await getForm(eventId, signal); const field = form.fields.find((f) => String(f.id) === String(fieldId)); if (!field) throw new Error("Вопрос удалён"); await client.put(`/api/v1/events/${eventId}/form`, { order: field.order, field: fieldToApi({ ...field, ...patch }) }, { signal }); return ok(); }
 export async function addField(eventId, field) { const form = await getForm(eventId); const order = form.fields.length + 1; await client.put(`/api/v1/events/${eventId}/form`, { order, field: fieldToApi({ type: "text", title: "Новое поле", ...field }) }); const updated = await getForm(eventId); return { id: updated.fields.find((f) => f.order === order)?.id }; }
 export async function removeField(eventId, fieldId) { const form = await getForm(eventId); const field = form.fields.find((f) => String(f.id) === String(fieldId)); await client.delete(`/api/v1/events/${eventId}/form`, { data: { order: field.order } }); return ok(); }
 export async function moveField(eventId, fieldId, direction) { const form = await getForm(eventId); const field = form.fields.find((f) => String(f.id) === String(fieldId)); await client.patch(`/api/v1/events/${eventId}/form`, { order_old: field.order, order_new: field.order + (direction === "up" ? -1 : 1) }); return ok(); }
@@ -243,3 +243,5 @@ export async function downloadFile(eventId, file) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+export const resourceDownloadUrl = (eventId, resourceId) => `${(client.defaults.baseURL || "").replace(/\/$/, "")}/api/v1/public/events/${eventId}/resources/${resourceId}/download`;

@@ -1,3 +1,4 @@
+import { ResourceList } from "../components/FormResources";
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Check, AlertTriangle } from "lucide-react";
@@ -109,6 +110,7 @@ export function PublicForm() {
           <PublicField
             key={f.id}
             field={f}
+            eventId={eventId}
             value={data[f.id]}
             customValue={customValues[f.id]}
             onChange={(v) => setData((current) => ({ ...current, [f.id]: v }))}
@@ -137,12 +139,13 @@ function optionName(option) {
   return typeof option === "object" && option !== null ? option.name : option;
 }
 
-function PublicField({ field, value, customValue, onChange, onCustomChange }) {
+function PublicField({ eventId, field, value, customValue, onChange, onCustomChange }) {
   if (field.type === "filler") {
     return (
       <div className="pt-2">
         <h3 className="text-xl font-bold">{field.title}</h3>
         {field.description && <p className="text-base" style={{ color: "var(--text-dim)" }}>{field.description}</p>}
+        <ResourceList publicView eventId={eventId} resources={field.resources} />
       </div>
     );
   }
@@ -155,6 +158,7 @@ function PublicField({ field, value, customValue, onChange, onCustomChange }) {
     <div>
       {label}
       {field.description && <div className="text-sm mb-2" style={{ color: "var(--text-muted)" }}>{field.description}</div>}
+      <ResourceList publicView eventId={eventId} resources={field.resources} />
       {field.type === "textarea" ? (
         <textarea rows={3} className="input !text-base" placeholder={field.placeholder} value={value || ""} onChange={(e) => onChange(e.target.value)} />
       ) : field.type === "date" ? (
