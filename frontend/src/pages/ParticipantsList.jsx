@@ -142,16 +142,22 @@ export default function ParticipantsList() {
 
   const exportXlsx = () => {
     // Always export all participants, not just filtered ones
-    const rows = participants.map((p, i) => {
-      const row = { "#": i + 1, "ФИО": p.full_name, "Почта": p.email, "Статус": statusMap(p.status) };
-      selectedCols.forEach((cid) => {
-        if (cid === "email" || cid === "status") return;
-        const c = dynamicCols.find((x) => x.id === cid);
-        if (c) row[c.label] = c.value(p);
-      });
-      return row;
+    const headers = ["#", "ФИО", "Почта", "Статус"];
+    const usedHeaders = new Set(headers);
+    const extraColumns = selectedCols.filter((id) => id !== "email" && id !== "status")
+      .map((id) => dynamicCols.find((column) => column.id === id)).filter(Boolean);
+    extraColumns.forEach((column) => {
+      let label = column.label;
+      if (usedHeaders.has(label)) label = `${column.label} (#${column.id})`;
+      const base = label;
+      for (let suffix = 2; usedHeaders.has(label); suffix += 1) label = `${base} (${suffix})`;
+      usedHeaders.add(label);
+      headers.push(label);
     });
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const rows = participants.map((p, i) => [
+      i + 1, p.full_name, p.email, statusMap(p.status), ...extraColumns.map((column) => column.value(p)),
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Участники");
     XLSX.writeFile(wb, `participants-${eventId}.xlsx`);

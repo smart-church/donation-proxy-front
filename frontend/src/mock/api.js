@@ -172,7 +172,28 @@ export async function addField(eventId, field) { const form = await getForm(even
 export async function removeField(eventId, fieldId) { const form = await getForm(eventId); const field = form.fields.find((f) => String(f.id) === String(fieldId)); await client.delete(`/api/v1/events/${eventId}/form`, { data: { order: field.order } }); return ok(); }
 export async function moveField(eventId, fieldId, direction) { const form = await getForm(eventId); const field = form.fields.find((f) => String(f.id) === String(fieldId)); await client.patch(`/api/v1/events/${eventId}/form`, { order_old: field.order, order_new: field.order + (direction === "up" ? -1 : 1) }); return ok(); }
 
-export async function listParticipants(eventId) { const [r, form] = await Promise.all([client.get(`/api/v1/events/${eventId}/participants`, { params: { page_size: 100 } }).then(result), getForm(eventId)]); return (r.participants || []).map((p) => participantToView(p, form.fields)); }
+// These screens filter, count and export locally, so they need the complete list.
+async function getAllPages(url, key) {
+  const pageSize = 100;
+  const rows = [];
+  const seen = new Set();
+  for (let page = 1; ; page += 1) {
+    const response = await client.get(url, { params: { page, page_size: pageSize } }).then(result);
+    const items = response[key] || [];
+    for (const item of items) {
+      // New mail can shift page boundaries while the list is loading.
+      if (!seen.has(item.id)) { rows.push(item); seen.add(item.id); }
+    }
+    if (items.length < pageSize) return rows;
+  }
+}
+
+export async function listParticipants(eventId) {
+  const [participants, form] = await Promise.all([
+    getAllPages(`/api/v1/events/${eventId}/participants`, "participants"), getForm(eventId),
+  ]);
+  return participants.map((p) => participantToView(p, form.fields));
+}
 export async function getParticipant(eventId, id) { const [p, form] = await Promise.all([client.get(`/api/v1/events/${eventId}/participants/${id}`).then(result), getForm(eventId)]); return participantToView(p, form.fields); }
 export async function updateParticipant(eventId, id, patch) { if (Object.keys(patch).length === 1 && patch.status) await client.patch(`/api/v1/events/${eventId}/participants/${id}`, { status: statusToApi[patch.status] || patch.status }); else { const form = await getForm(eventId); await client.put(`/api/v1/events/${eventId}/participants/${id}`, participantToApi(patch, form.fields)); } return ok(); }
 export async function deleteParticipant(eventId, id) { await client.delete(`/api/v1/events/${eventId}/participants/${id}`); return ok(); }
@@ -189,7 +210,7 @@ export async function submitParticipant(eventId, answers, formFields, customValu
 }
 
 const mailToView = (m) => ({ ...m, recipients: [m.receiver] });
-export async function listMail(eventId) { const r = await client.get(`/api/v1/events/${eventId}/mail`, { params: { page_size: 100 } }).then(result); return (r.mails || []).map(mailToView); }
+export async function listMail(eventId) { const mails = await getAllPages(`/api/v1/events/${eventId}/mail`, "mails"); return mails.map(mailToView); }
 export async function getMailItem(eventId, id) { const r = await client.get(`/api/v1/events/${eventId}/mail/${id}`).then(result); return mailToView(r.mail); }
 export async function sendMail(eventId, { recipients, template_id, subject, body, attachment_ids, idempotency_key }) { const payload = { receivers: recipients.map((email) => ({ email })), attachment_ids }; if (template_id) payload.template = Number(template_id); else Object.assign(payload, { subject, body }); await client.post(`/api/v1/events/${eventId}/mail`, payload, { headers: idempotency_key ? { "Idempotency-Key": idempotency_key } : {} }); return ok(); }
 export async function mailSuggestions(eventId, query) { const r = await client.get(`/api/v1/events/${eventId}/mail/suggestion`).then(result); const q = (query || "").toLowerCase(); return (r.receivers || []).filter((x) => !q || x.email.toLowerCase().includes(q) || x.full_name.toLowerCase().includes(q)).map((x) => ({ ...x, name: x.full_name })); }
