@@ -217,3 +217,29 @@ export async function getLastViewedEvent() { const id = getLastViewedEventId(); 
 export async function recordEventView(eventId) { localStorage.setItem(LAST_EVENT_KEY, String(eventId)); return ok(); }
 export function clearLastViewedEvent() { localStorage.removeItem(LAST_EVENT_KEY); }
 export const ERRORS = {};
+
+// Shared file infrastructure. Mail/form attachment workflows are added in later stages.
+export async function getFileLimits(eventId) {
+  return client.get(`/api/v1/events/${eventId}/file/limits`).then(result);
+}
+export async function uploadFile(eventId, file, purpose, { signal, onProgress } = {}) {
+  const data = new FormData();
+  data.append("purpose", purpose);
+  data.append("file", file);
+  return client.post(`/api/v1/events/${eventId}/file`, data, {
+    signal,
+    onUploadProgress: (event) => onProgress?.(event.total ? Math.round(event.loaded * 100 / event.total) : 0),
+  }).then(result);
+}
+export async function deleteUnusedFile(eventId, fileId) {
+  await client.delete(`/api/v1/events/${eventId}/file/${fileId}`);
+}
+export async function downloadFile(eventId, file) {
+  const response = await client.get(`/api/v1/events/${eventId}/file/${file.file_id}/download`, { responseType: "blob" });
+  const url = URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
