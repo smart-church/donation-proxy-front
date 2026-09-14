@@ -58,9 +58,12 @@ export default function FormEdit() {
   const getAvailableFieldTypes = (currentField) => {
     return FIELD_TYPES.filter(
       (t) =>
+        // Participant uploads are temporarily disabled; keep existing file questions readable.
+        (t.value !== "file" || currentField.type === "file") && (
         !SYSTEM_FIELDS.includes(t.value) || // Non-system fields are always available
         t.value === currentField.type || // Current type is always available
         !usedSystemFields.includes(t.value) // System fields available if not already used
+        )
     );
   };
 
