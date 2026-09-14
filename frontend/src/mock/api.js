@@ -194,6 +194,10 @@ export async function listParticipants(eventId) {
   ]);
   return participants.map((p) => participantToView(p, form.fields));
 }
+export async function createParticipant(eventId, payload, formFields = []) {
+  const participant = await client.post(`/api/v1/events/${eventId}/participants`, payload).then(result);
+  return participantToView(participant, formFields);
+}
 export async function getParticipant(eventId, id) { const [p, form] = await Promise.all([client.get(`/api/v1/events/${eventId}/participants/${id}`).then(result), getForm(eventId)]); return participantToView(p, form.fields); }
 export async function updateParticipant(eventId, id, patch) { if (Object.keys(patch).length === 1 && patch.status) await client.patch(`/api/v1/events/${eventId}/participants/${id}`, { status: statusToApi[patch.status] || patch.status }); else { const form = await getForm(eventId); await client.put(`/api/v1/events/${eventId}/participants/${id}`, participantToApi(patch, form.fields)); } return ok(); }
 export async function deleteParticipant(eventId, id) { await client.delete(`/api/v1/events/${eventId}/participants/${id}`); return ok(); }

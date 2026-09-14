@@ -1,8 +1,8 @@
 import axios from 'axios';
-import { listParticipants, listMail } from './api';
+import { listParticipants, listMail, createParticipant } from './api';
 
 jest.mock('axios', () => ({ create: jest.fn(() => ({
-  get: jest.fn(),
+  get: jest.fn(), post: jest.fn(),
   interceptors: { request: { use: jest.fn() }, response: { use: jest.fn() } },
 })) }));
 const client = axios.create.mock.results[0].value;
@@ -55,4 +55,13 @@ test('mail page overlap does not duplicate records', async () => {
   const loaded = await listMail(7);
   expect(loaded).toHaveLength(101);
   expect(loaded.map((item) => item.id)).toEqual(Array.from({ length: 101 }, (_, i) => 101 - i));
+});
+
+test('manual participant creation uses the management endpoint and maps the returned status', async () => {
+  client.post.mockResolvedValueOnce({ data: { id: 9, reg_id: 'registration-id', full_name: 'Иван', email: 'ivan@example.com', status: 'New', fields: [], file_answers: [] } });
+  const payload = { full_name: 'Иван', email: 'ivan@example.com' };
+  const created = await createParticipant(7, payload, [{ id: 1, type: 'full_name' }, { id: 2, type: 'email' }]);
+  expect(client.post).toHaveBeenCalledWith('/api/v1/events/7/participants', payload);
+  expect(created.status).toBe('pending');
+  expect(created.answers).toEqual({ 1: 'Иван', 2: 'ivan@example.com' });
 });

@@ -6,7 +6,7 @@ import ParticipantsList from './ParticipantsList';
 import * as api from '../mock/api';
 
 jest.mock('react-router-dom', () => ({ useParams: () => ({ eventId: '7' }), useNavigate: () => jest.fn() }));
-jest.mock('../mock/api', () => ({ getForm: jest.fn(), listParticipants: jest.fn() }));
+jest.mock('../mock/api', () => ({ getForm: jest.fn(), listParticipants: jest.fn(), createParticipant: jest.fn() }));
 jest.mock('xlsx', () => ({ ...jest.requireActual('xlsx'), writeFile: jest.fn() }));
 let root, container;
 beforeEach(() => {
@@ -38,4 +38,49 @@ test('duplicate, generated and object-property names retain separate export colu
   expect(new Set(headers).size).toBe(headers.length);
   expect(headers).toHaveLength(10);
   expect(row.slice(4)).toEqual(Array.from({ length: 6 }, (_, index) => `answer-${index + 7}.pdf`));
+});
+
+async function openCreate() {
+  api.getForm.mockResolvedValue({ fields: [] });
+  api.listParticipants.mockResolvedValue([]);
+  await act(async () => root.render(<ParticipantsList />));
+  await act(async () => Simulate.click(container.querySelector('[data-testid="participants-add"]')));
+}
+const input = (name) => container.querySelector(`[name="${name}"]`);
+const fill = async (name, value) => act(async () => Simulate.change(input(name), { target: { value } }));
+const submit = () => act(async () => Simulate.submit(container.querySelector('#participant-create-form')));
+
+test('add opens a modal, validates input and adds the returned participant to the list', async () => {
+  await openCreate();
+  expect(container.querySelector('[data-testid="participant-create-modal"]')).not.toBeNull();
+  await submit();
+  expect(api.createParticipant).not.toHaveBeenCalled();
+  expect(container.textContent).toContain('Введите ФИО.');
+  await fill('full_name', '  Иван Иванов  '); await fill('email', 'ivan@example.com');
+  let resolve;
+  api.createParticipant.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+  await submit(); await submit();
+  expect(api.createParticipant).toHaveBeenCalledTimes(1);
+  expect(api.createParticipant).toHaveBeenCalledWith('7', { full_name: 'Иван Иванов', email: 'ivan@example.com' }, []);
+  expect(container.querySelector('[data-testid="participant-create-submit"]').disabled).toBe(true);
+  await act(async () => Simulate.click(container.querySelector('[data-testid="participant-create-modal-close"]')));
+  expect(container.querySelector('[data-testid="participant-create-modal"]')).not.toBeNull();
+  await act(async () => resolve({ id: 42, full_name: 'Иван Иванов', email: 'ivan@example.com', status: 'pending', answers: {} }));
+  expect(container.querySelector('[data-testid="participant-create-modal"]')).toBeNull();
+  expect(container.querySelector('[data-testid="participant-link-42"]').textContent).toBe('Иван Иванов');
+  expect(container.querySelector('[data-testid="stat-total"]').textContent).toContain('1');
+});
+
+test('failed creation keeps entered values for retry and cancel creates nothing', async () => {
+  await openCreate();
+  await fill('full_name', 'Иван'); await fill('email', 'ivan@example.com');
+  api.createParticipant.mockRejectedValueOnce({ message_ru: 'Сервис недоступен.' });
+  await submit();
+  expect(container.textContent).toContain('Сервис недоступен.');
+  expect(input('full_name').value).toBe('Иван');
+  expect(input('email').value).toBe('ivan@example.com');
+  expect(container.querySelector('[data-testid="participant-create-submit"]').disabled).toBe(false);
+  await act(async () => Simulate.click(container.querySelector('[data-testid="participant-create-modal-close"]')));
+  expect(container.querySelector('[data-testid="participant-create-modal"]')).toBeNull();
+  expect(api.createParticipant).toHaveBeenCalledTimes(1);
 });
