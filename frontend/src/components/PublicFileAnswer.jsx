@@ -26,7 +26,7 @@ export default function PublicFileAnswer({ eventId, field, files = [], onChange,
     try {
       const token = await getSession();
       for (const file of selected) {
-        if (controller.signal.aborted) break;
+        if (controller.signal.aborted) throw new Error("Загрузка отменена.");
         setProgress(0);
         const result = await api.uploadAnswerFile(eventId, field.id, token, file, {
           signal: controller.signal, onProgress: (value) => { if (alive.current) setProgress(value); },

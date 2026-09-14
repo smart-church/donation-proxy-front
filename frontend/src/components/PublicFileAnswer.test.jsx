@@ -45,3 +45,18 @@ test('disabled uploads and invalid files never call API', async () => {
   await choose([new File(['exe'], 'a.exe')]); expect(api.uploadAnswerFile).not.toHaveBeenCalled();
   expect(container.textContent).toContain('формат');
 });
+
+test('cancelling while the session opens preserves files for retry', async () => {
+  let resolveSession;
+  session.mockImplementationOnce(() => new Promise((resolve) => { resolveSession = resolve; }));
+  api.uploadAnswerFile.mockResolvedValue({ file_id: 'one', name: 'a.pdf', size: 3 });
+  await act(async () => root.render(<Harness />));
+  await choose([new File(['pdf'], 'a.pdf')]);
+  await act(async () => Simulate.click([...container.querySelectorAll('button')].find((b) => b.textContent === 'Отменить')));
+  await act(async () => resolveSession('secret'));
+  expect(api.uploadAnswerFile).not.toHaveBeenCalled();
+  expect(container.textContent).toContain('Загрузка отменена.');
+  expect(busy).toHaveBeenLastCalledWith(false);
+  await act(async () => Simulate.click([...container.querySelectorAll('button')].find((b) => b.textContent === 'Повторить загрузку')));
+  expect(files).toHaveLength(1);
+});
