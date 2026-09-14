@@ -1,6 +1,6 @@
-import React from "react";
+import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { act, Simulate } from "react-dom/test-utils";
+import { Simulate } from "react-dom/test-utils";
 import FileUploader from "./FileUploader";
 import * as api from "../mock/api";
 
@@ -52,4 +52,19 @@ test("disables participant uploads until backend enables them", async () => {
   await mount({ purpose: "answer" });
   expect(container.querySelector("input").disabled).toBe(true);
   expect(container.querySelector('[role="alert"]').textContent).toContain("недоступна");
+});
+
+test("retry uploads only the failed files after partial success", async () => {
+  const uploaded = jest.fn();
+  api.uploadFile.mockResolvedValueOnce({ file_id: "first", name: "first.pdf", size: 3 })
+    .mockRejectedValueOnce(new Error("network"))
+    .mockResolvedValueOnce({ file_id: "second", name: "second.pdf", size: 3 });
+  await mount({ onUploaded: uploaded });
+  const first = new File(["pdf"], "first.pdf");
+  const second = new File(["pdf"], "second.pdf");
+  await act(async () => Simulate.change(container.querySelector("input"), { target: { files: [first, second], value: "" } }));
+  const retry = [...container.querySelectorAll("button")].find((button) => button.textContent === "Повторить загрузку");
+  await act(async () => Simulate.click(retry));
+  expect(api.uploadFile.mock.calls.map((args) => args[1].name)).toEqual(["first.pdf", "second.pdf", "second.pdf"]);
+  expect(uploaded).toHaveBeenCalledTimes(2);
 });

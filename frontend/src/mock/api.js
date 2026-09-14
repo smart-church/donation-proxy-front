@@ -187,10 +187,10 @@ export async function submitParticipant(eventId, answers, formFields, customValu
   return ok();
 }
 
-const mailToView = (m) => ({ ...m, recipients: [m.receiver], sent_at: m.date });
+const mailToView = (m) => ({ ...m, recipients: [m.receiver] });
 export async function listMail(eventId) { const r = await client.get(`/api/v1/events/${eventId}/mail`, { params: { page_size: 100 } }).then(result); return (r.mails || []).map(mailToView); }
 export async function getMailItem(eventId, id) { const r = await client.get(`/api/v1/events/${eventId}/mail/${id}`).then(result); return mailToView(r.mail); }
-export async function sendMail(eventId, { recipients, template_id, subject, body }) { const payload = { receivers: recipients.map((email) => ({ email })) }; if (template_id) payload.template = Number(template_id); else Object.assign(payload, { subject, body }); await client.post(`/api/v1/events/${eventId}/mail`, payload); return ok(); }
+export async function sendMail(eventId, { recipients, template_id, subject, body, attachment_ids, idempotency_key }) { const payload = { receivers: recipients.map((email) => ({ email })), attachment_ids }; if (template_id) payload.template = Number(template_id); else Object.assign(payload, { subject, body }); await client.post(`/api/v1/events/${eventId}/mail`, payload, { headers: idempotency_key ? { "Idempotency-Key": idempotency_key } : {} }); return ok(); }
 export async function mailSuggestions(eventId, query) { const r = await client.get(`/api/v1/events/${eventId}/mail/suggestion`).then(result); const q = (query || "").toLowerCase(); return (r.receivers || []).filter((x) => !q || x.email.toLowerCase().includes(q) || x.full_name.toLowerCase().includes(q)).map((x) => ({ ...x, name: x.full_name })); }
 
 export async function listTemplates(eventId) { const r = await client.get(`/api/v1/events/${eventId}/mail/template`).then(result); return r.templates || []; }

@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import ReactQuill from "react-quill";
 import { Send, X, Plus } from "lucide-react";
 import * as api from "../mock/api";
+import AttachmentList from "../components/AttachmentList";
+import FileUploader from "../components/FileUploader";
 import SafeHtml from "../components/SafeHtml";
 import { useApp } from "../components/AppContext";
 
@@ -25,6 +27,11 @@ export default function MailCompose() {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [sending, setSending] = useState(false);
+  const [manualFiles, setManualFiles] = useState([]);
+  const [excluded, setExcluded] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [templateError, setTemplateError] = useState("");
+  const requestRef = useRef(null);
 
   useEffect(() => {
     api.listTemplates(eventId).then(setTemplates);
@@ -58,6 +65,7 @@ export default function MailCompose() {
   const removeRecipient = (email) => setRecipients((r) => r.filter((x) => x !== email));
 
   const send = async () => {
+    if (sending || uploading || templateLoading) return;
     if (recipients.length === 0) {
       notify("Добавьте получателей", "error");
       return;
@@ -72,8 +80,14 @@ export default function MailCompose() {
     }
     setSending(true);
     try {
-      await api.sendMail(eventId, { recipients, template_id: templateId || null, subject, body });
-      notify("Письмо отправлено", "success");
+      const payload = { recipients, template_id: templateId || null, subject, body, attachment_ids: files.map((f) => f.file_id) };
+      const signature = JSON.stringify({ eventId, ...payload });
+      if (requestRef.current?.signature !== signature) {
+        const key = Array.from(window.crypto.getRandomValues(new Uint8Array(16)), (n) => n.toString(16).padStart(2, "0")).join("");
+        requestRef.current = { signature, key };
+      }
+      await api.sendMail(eventId, { ...payload, idempotency_key: requestRef.current.key });
+      notify("Письмо поставлено в очередь", "success");
       navigate(`/events/${eventId}/mail`);
     } catch (error) {
       notify(error.message_ru || "Не удалось отправить письмо", "error");
@@ -85,11 +99,18 @@ export default function MailCompose() {
   const usingTemplate = !!templateId;
   const selectedTemplate = useMemo(() => templates.find((t) => String(t.id) === String(templateId)), [templates, templateId]);
 
+  const templateLoading = !!templateId && selectedTemplate?.body === undefined;
+  const files = [...(selectedTemplate?.attachments || []).filter((f) => !excluded.includes(f.file_id)), ...manualFiles]
+    .filter((file, index, all) => all.findIndex((f) => f.file_id === file.file_id) === index);
+
   useEffect(() => {
+    let cancelled = false;
     if (!templateId || selectedTemplate?.body !== undefined) return;
     api.getTemplate(eventId, templateId).then((template) => {
+      if (cancelled) return;
       setTemplates((current) => current.map((item) => String(item.id) === String(template.id) ? template : item));
-    });
+    }).catch((e) => { if (!cancelled) setTemplateError(e.message_ru || "Не удалось загрузить шаблон. Выберите его повторно."); });
+    return () => { cancelled = true; };
   }, [eventId, templateId, selectedTemplate]);
 
   return (
@@ -156,7 +177,7 @@ export default function MailCompose() {
 
         <div>
           <label className="label">Шаблон письма</label>
-          <select className="input" value={templateId} onChange={(e) => setTemplateId(e.target.value)} data-testid="mail-template-select">
+          <select className="input" value={templateId} disabled={sending || uploading} onChange={(e) => { setTemplateId(e.target.value); setExcluded([]); setTemplateError(""); }} data-testid="mail-template-select">
             <option value="">— без шаблона —</option>
             {templates.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
@@ -185,9 +206,16 @@ export default function MailCompose() {
           )
         )}
 
+        {templateError && <p role="alert">{templateError}</p>}
+        {templateLoading && <p>Загружаем вложения шаблона…</p>}
+        <AttachmentList eventId={eventId} files={files} disabled={sending || uploading}
+          onRemove={(id) => { setExcluded((current) => [...current, id]); setManualFiles((current) => current.filter((f) => f.file_id !== id)); }} />
+        <FileUploader eventId={eventId} purpose="mail" files={files} disabled={sending || templateLoading}
+          onUploaded={(file) => setManualFiles((current) => [...current, file])} onBusyChange={setUploading} />
+        <p className="text-sm">Добавленные вручную файлы сохраняются при смене шаблона. Удаление вложения здесь действует только на это письмо.</p>
         <div className="flex justify-end gap-2 pt-2">
           <button className="btn btn-ghost" onClick={() => navigate(-1)}>Отмена</button>
-          <button className="btn btn-primary" disabled={sending} onClick={send} data-testid="mail-send-btn">
+          <button className="btn btn-primary" disabled={sending || uploading || templateLoading} onClick={send} data-testid="mail-send-btn">
             {sending ? <span className="spinner" /> : <Send size={14} />} Отправить
           </button>
         </div>

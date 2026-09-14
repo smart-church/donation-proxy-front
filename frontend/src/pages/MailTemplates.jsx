@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import ReactQuill from "react-quill";
 import { Plus, Edit3, Save, Trash2, X, ChevronLeft, MoreVertical } from "lucide-react";
 import * as api from "../mock/api";
+import MailAttachments from "../components/MailAttachments";
 import DataTable from "../components/DataTable";
 import Modal from "../components/Modal";
 import SafeHtml from "../components/SafeHtml";
@@ -145,10 +146,13 @@ function TemplateCreate({ eventId, onClose, onCreated }) {
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState({});
 
   const save = async () => {
+    if (saving || uploading) return;
     const validationErrors = validateTemplate({ name, subject, body });
     if (Object.keys(validationErrors).length) {
       setErrors(validationErrors);
@@ -157,7 +161,7 @@ function TemplateCreate({ eventId, onClose, onCreated }) {
     setSaving(true);
     setErrors({});
     try {
-      await api.createTemplate(eventId, { name: name.trim(), subject: subject.trim(), body });
+      await api.createTemplate(eventId, { name: name.trim(), subject: subject.trim(), body, attachment_ids: files.map((f) => f.file_id) });
       onCreated();
     } catch (error) {
       notify(error.message_ru || "Не удалось создать шаблон", "error");
@@ -176,7 +180,7 @@ function TemplateCreate({ eventId, onClose, onCreated }) {
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
-          <button className="btn btn-primary" disabled={!name || saving} onClick={save} data-testid="template-create-save">
+          <button className="btn btn-primary" disabled={!name || saving || uploading} onClick={save} data-testid="template-create-save">
             {saving ? <span className="spinner" /> : <Save size={14} />} Создать
           </button>
         </>
@@ -198,6 +202,7 @@ function TemplateCreate({ eventId, onClose, onCreated }) {
           <ReactQuill theme="snow" value={body} onChange={(value) => { setBody(value); setErrors({ ...errors, body: "" }); }} modules={quillModules} />
           {errors.body && <div className="text-xs mt-1" role="alert" style={{ color: "var(--danger)" }}>{errors.body}</div>}
         </div>
+        <MailAttachments eventId={eventId} files={files} onChange={setFiles} onBusyChange={setUploading} disabled={saving} />
       </div>
     </Modal>
   );
@@ -206,12 +211,15 @@ function TemplateCreate({ eventId, onClose, onCreated }) {
 function TemplateView({ eventId, template, onBack }) {
   const { notify } = useApp();
   const [tpl, setTpl] = useState(template);
+  const [saved, setSaved] = useState(template);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [errors, setErrors] = useState({});
 
   const save = async () => {
+    if (saving || uploading) return;
     const validationErrors = validateTemplate(tpl);
     if (Object.keys(validationErrors).length) {
       setErrors(validationErrors);
@@ -220,7 +228,8 @@ function TemplateView({ eventId, template, onBack }) {
     setSaving(true);
     setErrors({});
     try {
-      await api.updateTemplate(eventId, tpl.id, { name: tpl.name.trim(), subject: tpl.subject.trim(), body: tpl.body });
+      await api.updateTemplate(eventId, tpl.id, { name: tpl.name.trim(), subject: tpl.subject.trim(), body: tpl.body, attachment_ids: (tpl.attachments || []).map((f) => f.file_id) });
+      setSaved(tpl);
       setEditing(false);
       notify("Шаблон обновлён", "success");
     } catch (error) {
@@ -266,11 +275,13 @@ function TemplateView({ eventId, template, onBack }) {
             <SafeHtml className="prose prose-sm max-w-none pt-2" html={tpl.body} />
           </>
         )}
+        <MailAttachments eventId={eventId} files={tpl.attachments || []} disabled={saving}
+          onBusyChange={setUploading} onChange={editing ? (update) => setTpl((current) => ({ ...current, attachments: update(current.attachments || []) })) : undefined} />
         <div className="flex justify-end gap-2 pt-4 border-t" style={{ borderColor: "var(--border)" }}>
           {editing ? (
             <>
-              <button className="btn btn-ghost" onClick={() => setEditing(false)}>Отмена</button>
-              <button className="btn btn-primary" disabled={saving} onClick={save}>
+              <button className="btn btn-ghost" disabled={saving || uploading} onClick={() => { setTpl(saved); setEditing(false); }}>Отмена</button>
+              <button className="btn btn-primary" disabled={saving || uploading} onClick={save}>
                 {saving ? <span className="spinner" /> : <Save size={14} />} Сохранить
               </button>
             </>

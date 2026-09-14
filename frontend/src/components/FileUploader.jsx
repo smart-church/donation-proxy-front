@@ -7,7 +7,8 @@ export function filePolicyHint(policy) {
 }
 
 /** Shared stage-A building block, wired into mail/forms by their respective stages. */
-export default function FileUploader({ eventId, purpose = "mail", files = [], onUploaded, onBusyChange }) {
+export default function FileUploader({ eventId, purpose = "mail", files = [], onUploaded, onBusyChange, disabled = false }) {
+  const [retryFiles, setRetryFiles] = useState([]);
   const [policy, setPolicy] = useState(null);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState(null);
@@ -19,6 +20,7 @@ export default function FileUploader({ eventId, purpose = "mail", files = [], on
 
   useEffect(() => {
     const current = ++generation.current;
+    setRetryFiles([]);
     setPolicy(null);
     setError("");
     setProgress(null);
@@ -40,7 +42,7 @@ export default function FileUploader({ eventId, purpose = "mail", files = [], on
   const upload = async (event) => {
     const selected = Array.from(event.target.files || []);
     event.target.value = "";
-    if (!selected.length || !policy || active.current) return;
+    if (disabled || !selected.length || !policy || active.current) return;
     if (files.length + selected.length > policy.max_files ||
         [...files, ...selected].reduce((sum, f) => sum + f.size, 0) > policy.max_total_bytes) {
       setError("Превышено количество файлов или их суммарный размер.");
@@ -51,6 +53,8 @@ export default function FileUploader({ eventId, purpose = "mail", files = [], on
       setError("Проверьте формат и размер выбранных файлов.");
       return;
     }
+    setRetryFiles([]);
+    const remaining = [...selected];
     const controller = new AbortController();
     const current = generation.current;
     active.current = controller;
@@ -67,8 +71,10 @@ export default function FileUploader({ eventId, purpose = "mail", files = [], on
         });
         if (current !== generation.current) break;
         onUploaded?.(asset);
+        remaining.shift();
       }
     } catch (e) {
+      if (current === generation.current) setRetryFiles(remaining);
       if (current === generation.current) setError(controller.signal.aborted
         ? "Загрузка отменена. Можно выбрать файл повторно."
         : e.message_ru || "Не удалось загрузить файл. Выберите его повторно.");
@@ -83,7 +89,7 @@ export default function FileUploader({ eventId, purpose = "mail", files = [], on
 
   return <div className="space-y-2">
     <label className="label">Файлы
-      <input ref={input} type="file" multiple disabled={!policy || progress !== null}
+      <input ref={input} type="file" multiple disabled={disabled || !policy || progress !== null}
         accept={policy?.allowed_extensions.map((ext) => `.${ext}`).join(",")}
         onChange={upload} className="block mt-2" />
     </label>
@@ -94,6 +100,8 @@ export default function FileUploader({ eventId, purpose = "mail", files = [], on
       {progress === 100 ? "Файл загружен, проверяем содержимое…" : `Загрузка: ${progress}%`}
       <button type="button" className="btn btn-ghost" onClick={() => active.current?.abort()}>Отменить</button>
     </div>}
+    {retryFiles.length > 0 && <button type="button" className="btn btn-ghost" disabled={disabled || progress !== null}
+      onClick={() => upload({ target: { files: retryFiles, value: "" } })}>Повторить загрузку</button>}
     {error && <p role="alert" style={{ color: "var(--danger)" }}>{error}</p>}
   </div>;
 }
