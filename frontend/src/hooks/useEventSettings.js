@@ -7,6 +7,9 @@ const validate = (event) => {
   if (event.auto_mail_enabled && !event.success_template_id) {
     errors.success_form_template = "Выберите шаблон письма для автоматической отправки.";
   }
+  if (event.auto_mail_rule && (!event.auto_mail_rule.question_id || !Array.isArray(event.auto_mail_rule.answers))) {
+    errors.auto_mail_rule = "Выберите вопрос или удалите незавершённое правило.";
+  }
   return errors;
 };
 
@@ -45,9 +48,10 @@ export default function useEventSettings(eventId, notify) {
             const fields = error.field_errors || {};
             if (ctx.alive) {
               setErrors({
+                auto_mail_rule: fields.auto_mail_rule,
                 title: fields.title || fields.name,
                 success_form_template: fields.success_form_template,
-                general: fields.title || fields.name || fields.success_form_template
+                general: fields.auto_mail_rule || fields.title || fields.name || fields.success_form_template
                   ? "" : error.message_ru || "Не удалось сохранить параметры. Повторим автоматически.",
               });
               setStatus("error");

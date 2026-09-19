@@ -81,3 +81,23 @@ test("tab close flushes and warns only while unsaved", async () => {
   const saved = new Event("beforeunload", { cancelable: true });
   act(() => window.dispatchEvent(saved)); expect(saved.defaultPrevented).toBe(false);
 });
+
+test("incomplete rule waits for completion, then autosaves and can be removed on exit", async () => {
+  act(() => state.patch({ auto_mail_rule: { question_id: "", answers: [] } }));
+  await tick();
+  expect(api.updateEvent).not.toHaveBeenCalled();
+  expect(state.errors.auto_mail_rule).toBeTruthy();
+  act(() => state.patch({ auto_mail_rule: { question_id: 1, answers: [{ option: "Online", template_id: 2 }] } }));
+  await tick();
+  expect(api.updateEvent.mock.calls[0][1].auto_mail_rule).toEqual({ question_id: 1, answers: [{ option: "Online", template_id: 2 }] });
+  act(() => state.patch({ auto_mail_rule: null }));
+  await act(async () => root.render(null));
+  expect(api.updateEvent.mock.calls[1][1].auto_mail_rule).toBeNull();
+});
+test("rule errors returned by the API are shown against the rule", async () => {
+  api.updateEvent.mockRejectedValueOnce({ field_errors: { auto_mail_rule: "Вариант удалён" } });
+  act(() => state.patch({ auto_mail_rule: { question_id: 1, answers: [{ option: "Online", template_id: 2 }] } }));
+  await tick();
+  expect(state.errors.auto_mail_rule).toBe("Вариант удалён");
+  expect(state.status).toBe("error");
+});

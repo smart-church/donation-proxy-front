@@ -5,6 +5,7 @@ import { Trash2, AlertTriangle, CheckCircle2, XCircle, ExternalLink } from "luci
 import * as api from "../mock/api";
 import { useApp } from "../components/AppContext";
 import Modal from "../components/Modal";
+import AutoMailRule from "../components/AutoMailRule";
 import useEventSettings from "../hooks/useEventSettings";
 
 const quillModules = {
@@ -19,6 +20,8 @@ const quillModules = {
 export default function EventSettings() {
   const { eventId } = useParams();
   const [templates, setTemplates] = useState([]);
+  const [fields, setFields] = useState([]);
+  const [ruleLoading, setRuleLoading] = useState(true);
   const [approving, setApproving] = useState(false);
   const [disapproving, setDisapproving] = useState(false);
   const [openDelete, setOpenDelete] = useState(false);
@@ -29,9 +32,10 @@ export default function EventSettings() {
 
   useEffect(() => {
     let active = true;
-    setTemplates([]);
-    api.listTemplates(eventId).then((items) => { if (active) setTemplates(items); })
-      .catch((error) => { if (active) notify(error.message_ru || "Не удалось загрузить шаблоны", "error"); });
+    setTemplates([]); setFields([]); setRuleLoading(true);
+    Promise.all([api.listTemplates(eventId), api.getForm(eventId)]).then(([items, form]) => {
+      if (active) { setTemplates(items); setFields(form.fields); setRuleLoading(false); }
+    }).catch((error) => { if (active) notify(error.message_ru || "Не удалось загрузить вопросы и шаблоны", "error"); });
     return () => { active = false; };
   }, [eventId, notify]);
 
@@ -193,7 +197,7 @@ export default function EventSettings() {
         </div>
 
         <div>
-          <label className="label">Письмо о заполненной анкете</label>
+          <label className="label">Шаблон письма по умолчанию</label>
           <select
             className={`input ${errors.success_form_template ? "error" : ""}`}
             value={ev.success_template_id || ""}
@@ -212,6 +216,9 @@ export default function EventSettings() {
             </div>
           )}
         </div>
+        <AutoMailRule rule={ev.auto_mail_rule} fields={fields} templates={templates}
+          disabled={ruleLoading || !ev.auto_mail_enabled} error={errors.auto_mail_rule}
+          onChange={(rule) => patch({ auto_mail_rule: rule })} />
       </div>
 
       <div className="surface p-6 mb-6 space-y-5">
