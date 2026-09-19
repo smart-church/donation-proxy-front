@@ -101,7 +101,7 @@ export function PublicForm() {
   };
 
   return (
-    <PublicShell title={ev.name} prominentTitle>
+    <PublicShell title={ev.name} prominentTitle cardLayout headerContent={<>
       {ev.description && (
         <SafeHtml className="prose prose-base max-w-none mb-6" html={ev.description} />
       )}
@@ -109,15 +109,16 @@ export function PublicForm() {
       {/* progress */}
       <div className="mb-6">
         <div className="flex justify-between text-sm mb-1.5" style={{ color: "var(--text-dim)" }}>
-          <span>Прогресс заполнения</span>
-          <span>{progress}%</span>
+          <span>Заполнено</span>
+          <span style={{ color: "var(--brand)" }}>{filled}/{requiredFields.length}</span>
         </div>
         <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--bg-elev-2)" }}>
           <div className="h-full transition-all" style={{ width: `${progress}%`, background: "var(--brand)" }} />
         </div>
       </div>
 
-      <form onSubmit={submit} className="space-y-5" data-testid="public-form">
+      </>}>
+      <form onSubmit={submit} className="public-question-list" data-testid="public-form">
         {visibleFields.map((f) => (
           <PublicField
             key={f.id}
@@ -141,9 +142,9 @@ export function PublicForm() {
             <div className="text-base">{error}</div>
           </div>
         )}
-        <div className="pt-3">
-          <button type="submit" className="btn btn-primary w-full !text-base" disabled={!isValid || submitting || Object.values(busyFields).some(Boolean)} data-testid="public-form-submit">
-            {submitting ? <span className="spinner" /> : <Check size={14} />} Зарегистрироваться
+        <div className="public-submit-row">
+          <button type="submit" className="btn btn-primary public-submit w-full" disabled={!isValid || submitting || Object.values(busyFields).some(Boolean)} data-testid="public-form-submit">
+            {submitting && <span className="spinner" />} Отправить анкету
           </button>
         </div>
       </form>
@@ -158,20 +159,21 @@ function optionName(option) {
 function PublicField({ eventId, getSession, onUploadBusy, uploadEnabled, disabled, field, value, customValue, onChange, onCustomChange }) {
   if (field.type === "filler") {
     return (
-      <div className="pt-2">
+      <section className="public-question-card">
         <h3 className="text-xl font-bold">{field.title}</h3>
         {field.description && <p className="text-base" style={{ color: "var(--text-dim)" }}>{field.description}</p>}
         <ResourceList publicView eventId={eventId} resources={field.resources} />
-      </div>
+      </section>
     );
   }
   const label = (
-    <label className="block text-base font-semibold mb-2">
-      {field.title} {field.required && <span style={{ color: "var(--danger)" }}>*</span>}
-    </label>
+    <div className="public-question-label" id={`question-${field.id}`}>
+      <span>{field.title}</span>
+      {field.required && <span className="public-required-badge">Обязательно</span>}
+    </div>
   );
   return (
-    <div>
+    <div className="public-question-card" role="group" aria-labelledby={`question-${field.id}`}>
       {label}
       {field.description && <div className="text-sm mb-2" style={{ color: "var(--text-muted)" }}>{field.description}</div>}
       <ResourceList publicView eventId={eventId} resources={field.resources} />
@@ -272,52 +274,78 @@ export function PublicFail() {
 function PublicResult({ success = false }) {
   const { id: eventId } = useParams();
   const [ev, setEv] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    api.getPublicForm(eventId).then(({ event }) => setEv(event)).catch(() => {});
+    let alive = true;
+    setEv(null);
+    setError("");
+    api.getPublicForm(eventId).then(({ event }) => {
+      if (alive) setEv(event);
+    }).catch((err) => {
+      if (alive) setError(err.message_ru || "Не удалось загрузить мероприятие.");
+    });
+    return () => { alive = false; };
   }, [eventId]);
+
+  if (error) {
+    return (
+      <PublicShell title="Мероприятие недоступно">
+        <div role="alert" className="text-base" style={{ color: "var(--danger)" }}>{error}</div>
+      </PublicShell>
+    );
+  }
+
+  if (!ev) {
+    return <div className="min-h-screen grid place-items-center text-base" style={{ color: "var(--text-muted)" }}>Загрузка…</div>;
+  }
 
   const description = success
     ? ev?.success_form_description
     : ev?.fail_form_description;
 
   return (
-    <PublicShell title={ev?.name || "Мероприятие"}>
-      <div className="text-center py-6">
+    <PublicShell
+      title={ev.name}
+      cardLayout={success} prominentTitle={success} hint={null}
+    >
+      <div className={success ? "public-question-card public-success-card" : "text-center py-6"}>
         <div
-          className="w-14 h-14 rounded-full grid place-items-center mx-auto mb-4"
+          className={success ? "public-success-icon" : "w-14 h-14 rounded-full grid place-items-center mx-auto mb-4"}
           style={success
             ? { background: "var(--brand-soft)", color: "var(--brand)" }
             : { background: "var(--danger-soft)", color: "var(--danger)" }}
         >
-          {success ? <Check size={26} /> : <AlertTriangle size={26} />}
+          {success ? <Check size={32} aria-hidden="true" /> : <AlertTriangle size={26} />}
         </div>
-        <h1 className="text-3xl font-extrabold mb-2">
+        <h2 className={success ? "public-success-title" : "text-3xl font-extrabold mb-2"}>
           {success ? "Регистрация завершена" : "Не удалось отправить"}
-        </h1>
+        </h2>
         {description ? (
-          <SafeHtml className="prose prose-base max-w-none" html={description} />
-        ) : !success ? (
+          <SafeHtml className={`prose prose-base max-w-none ${success ? "public-success-description" : ""}`} html={description} />
+        ) : success ? (
+          <p className="public-success-description">Спасибо! Ваша анкета успешно отправлена.</p>
+        ) : (
           <p className="text-base" style={{ color: "var(--text-dim)" }}>
             Попробуйте ещё раз позднее или свяжитесь с организаторами.
           </p>
-        ) : null}
+        )}
       </div>
     </PublicShell>
   );
 }
 
-function PublicShell({ title, children, prominentTitle = false }) {
+function PublicShell({ title, children, prominentTitle = false, cardLayout = false, headerContent, hint = "Заполните все обязательные поля" }) {
   return (
-    <div className="min-h-screen grain px-4 py-10" style={{ background: "var(--bg)" }}>
-      <div
+    <div className={`min-h-screen px-4 py-10 ${cardLayout ? "public-card-form" : "grain"}`} style={{ background: "var(--bg)" }}>
+      {!cardLayout && <div
         aria-hidden
         className="fixed inset-0 pointer-events-none"
         style={{
           background:
             "radial-gradient(900px 400px at 15% -5%, var(--brand-soft), transparent 60%)",
         }}
-      />
+      />}
       <div className="max-w-2xl mx-auto relative z-10">
         <div className="flex items-center gap-3 mb-6" data-testid="public-brand">
           <div className="w-14 h-14 rounded-lg grid place-items-center shrink-0" style={{ background: "#0b0f14" }}>
@@ -331,7 +359,8 @@ function PublicShell({ title, children, prominentTitle = false }) {
             Московская Церковь Христа
           </div>
         </div>
-        <div className="surface p-8">
+        <div className={cardLayout ? "public-form-content" : "surface p-8"}>
+          <div className={cardLayout ? "public-question-card public-form-header" : undefined}>
           {prominentTitle ? (
             <h1 className="text-3xl font-extrabold tracking-tight mb-6" data-testid="public-event-title">
               {title}
@@ -339,6 +368,9 @@ function PublicShell({ title, children, prominentTitle = false }) {
           ) : (
             <div className="text-sm mb-2 tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>{title}</div>
           )}
+          {cardLayout && hint && <p className="public-form-hint">{hint}</p>}
+          {headerContent}
+          </div>
           {children}
         </div>
       </div>

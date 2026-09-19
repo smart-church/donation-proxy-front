@@ -5,8 +5,8 @@ import * as api from "../mock/api";
 import { useApp } from "../components/AppContext";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState(process.env.REACT_APP_SEED_ADMIN_EMAIL || "admin@evman.io");
-  const [password, setPassword] = useState(process.env.REACT_APP_SEED_ADMIN_PASSWORD || "admin1234");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { refreshUser } = useApp();
@@ -73,7 +73,7 @@ export default function LoginPage() {
                     setError("");
                   }}
                   className={`input pl-9 ${error ? "error" : ""}`}
-                  placeholder="you@evman.io"
+                  placeholder="you@mcoc.ru"
                   required
                 />
               </div>
@@ -107,16 +107,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div
-            className="mt-6 pt-4 border-t text-xs"
-            style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
-          >
-            Тестовые доступы:
-            <div className="mt-1 grid grid-cols-2 gap-2">
-              <span className="kbd">admin@evman.io / admin1234</span>
-              <span className="kbd">manager@evman.io / manager1234</span>
-            </div>
-          </div>
         </div>
       </div>
     </div>

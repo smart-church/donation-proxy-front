@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import ReactQuill from "react-quill";
-import { Save, Trash2, AlertTriangle, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
+import { Trash2, AlertTriangle, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
 import * as api from "../mock/api";
 import { useApp } from "../components/AppContext";
 import Modal from "../components/Modal";
+import useEventSettings from "../hooks/useEventSettings";
 
 const quillModules = {
   toolbar: [
@@ -17,87 +18,46 @@ const quillModules = {
 
 export default function EventSettings() {
   const { eventId } = useParams();
-  const [ev, setEv] = useState(null);
   const [templates, setTemplates] = useState([]);
-  const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
   const [disapproving, setDisapproving] = useState(false);
-  const [errors, setErrors] = useState({});
   const [openDelete, setOpenDelete] = useState(false);
   const [confirmName, setConfirmName] = useState("");
   const { user, notify } = useApp();
   const navigate = useNavigate();
+  const { ev, patch, errors, setErrors, status, save, stop, resume } = useEventSettings(eventId, notify);
 
   useEffect(() => {
-    (async () => {
-      const [e, t] = await Promise.all([api.getEvent(eventId), api.listTemplates(eventId)]);
-      setEv(e);
-      setTemplates(t);
-    })();
-  }, [eventId]);
+    let active = true;
+    setTemplates([]);
+    api.listTemplates(eventId).then((items) => { if (active) setTemplates(items); })
+      .catch((error) => { if (active) notify(error.message_ru || "Не удалось загрузить шаблоны", "error"); });
+    return () => { active = false; };
+  }, [eventId, notify]);
 
-  if (!ev) return <div className="surface p-12 text-center"><span className="spinner" /></div>;
-
-  const patch = (obj) => {
-    setEv({ ...ev, ...obj });
-    setErrors((current) => {
-      const next = { ...current };
-      if (Object.prototype.hasOwnProperty.call(obj, "name")) delete next.title;
-      if (
-        Object.prototype.hasOwnProperty.call(obj, "success_template_id") ||
-        Object.prototype.hasOwnProperty.call(obj, "auto_mail_enabled")
-      ) {
-        delete next.success_form_template;
-      }
-      delete next.general;
-      return next;
-    });
-  };
+  if (!ev) return <div className="surface p-12 text-center">{errors.general || <span className="spinner" />}</div>;
   const publicFormUrl = `${window.location.origin}/form/${eventId}`;
-
-  const save = async () => {
-    const validationErrors = {};
-    if (!ev.name.trim()) validationErrors.title = "Введите название мероприятия.";
-    if (ev.auto_mail_enabled && !ev.success_template_id) {
-      validationErrors.success_form_template = "Выберите шаблон письма для автоматической отправки.";
-    }
-    if (Object.keys(validationErrors).length) {
-      setErrors(validationErrors);
-      return;
-    }
-
-    setSaving(true);
-    setErrors({});
-    try {
-      await api.updateEvent(eventId, ev);
-      notify("Параметры сохранены", "success");
-    } catch (err) {
-      const fieldErrors = err.field_errors || {};
-      setErrors({
-        title: fieldErrors.title || fieldErrors.name,
-        success_form_template: fieldErrors.success_form_template,
-        general: fieldErrors.title || fieldErrors.name || fieldErrors.success_form_template
-          ? ""
-          : err.message_ru,
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const del = async () => {
     if (confirmName.trim() !== ev.name.trim()) return;
-    await api.deleteEvent(eventId);
-    notify("Мероприятие удалено", "success");
-    navigate("/events");
+    await stop();
+    try {
+      await api.deleteEvent(eventId);
+      notify("Мероприятие удалено", "success");
+      navigate("/events");
+    } catch (error) {
+      resume();
+      setErrors({ general: error.message_ru || "Не удалось удалить мероприятие." });
+    }
   };
 
   const approve = async () => {
     setApproving(true);
     setErrors({});
     try {
+      if (!await save()) return;
       await api.approveEvent(eventId);
-      setEv({ ...ev, is_approved: true });
+      patch({ is_approved: true }, true);
       notify("Мероприятие одобрено", "success");
     } catch (err) {
       setErrors({ general: err.message_ru });
@@ -110,8 +70,9 @@ export default function EventSettings() {
     setDisapproving(true);
     setErrors({});
     try {
+      if (!await save()) return;
       await api.disapproveEvent(eventId);
-      setEv({ ...ev, is_approved: false, registration_open: false });
+      patch({ is_approved: false, registration_open: false }, true);
       notify("Одобрение мероприятия отозвано", "success");
     } catch (err) {
       setErrors({ general: err.message_ru });
@@ -150,10 +111,11 @@ export default function EventSettings() {
               Отозвать одобрение
             </button>
           )}
-          <button data-testid="event-settings-save" className="btn btn-primary" disabled={saving} onClick={save}>
-            {saving ? <span className="spinner" /> : <Save size={14} />} Сохранить
-          </button>
         </div>
+      </div>
+
+      <div className="text-sm mb-4" role="status" aria-live="polite" style={{ color: status === "error" ? "var(--danger)" : "var(--text-muted)" }}>
+        {{ idle: "Изменения сохраняются автоматически", pending: "Есть несохранённые изменения", saving: "Сохранение…", saved: "Все изменения сохранены", error: "Изменения не сохранены" }[status]}
       </div>
 
       {ev.registration_open && !ev.is_approved && (

@@ -273,3 +273,91 @@ body {
   display: inline-block;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Public questionnaire cards, matching the registration form reference. */
+.public-card-form {
+  --brand: #38965f;
+  --brand-soft: #e8f2ec;
+  --brand-strong: #2e8050;
+  --brand-ring: rgba(56, 150, 95, .18);
+  --bg: #f6f7f9;
+  --bg-elev: #fff;
+  --bg-elev-2: #f3f4f6;
+  --text: #17191c;
+  --text-dim: #737b86;
+  --text-muted: #858b95;
+  --border: #e2e4e8;
+  --danger: #ae333a;
+  color: var(--text);
+}
+.public-question-list { display: grid; gap: 22px; }
+.public-question-card {
+  min-width: 0;
+  padding: 26px 34px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: 0 3px 5px rgba(24, 32, 42, .08), 0 8px 12px rgba(24, 32, 42, .025);
+}
+.public-form-header { margin-bottom: 22px; padding-top: 30px; }
+.public-form-header h1 { font-size: 24px; line-height: 1.3; margin-bottom: 4px; }
+.public-form-hint { color: var(--text-dim); font-size: 13px; margin-bottom: 28px; }
+.public-form-header > div:last-child { margin-bottom: 0; }
+.public-question-label {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin-bottom: 10px;
+  font-size: 16px;
+  font-weight: 500;
+}
+.public-required-badge {
+  padding: 2px 12px;
+  border-radius: 5px;
+  background: #f8eaec;
+  color: #a63239;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.public-question-card .input {
+  min-height: 38px;
+  padding: 9px 13px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--bg-elev-2);
+  font-size: 14px !important;
+}
+.public-question-card .input:focus { border-color: var(--brand); }
+.public-question-card textarea.input { min-height: 100px; resize: vertical; }
+.public-question-card input[type="radio"],
+.public-question-card input[type="checkbox"] { accent-color: var(--brand); width: 18px; height: 18px; flex-shrink: 0; }
+.public-submit-row { padding-top: 30px; }
+.public-success-card { text-align: center; padding-top: 44px; padding-bottom: 44px; }
+.public-success-icon {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  margin: 0 auto 22px;
+  border-radius: 20px;
+}
+.public-success-title { margin: 0 0 12px; font-size: 26px; line-height: 1.3; font-weight: 700; }
+.public-success-description { color: var(--text-dim); font-size: 16px; line-height: 1.75; overflow-wrap: anywhere; }
+.public-success-description a { color: var(--brand); text-decoration: underline; }
+.public-success-description img { max-width: 100%; height: auto; }
+.public-submit {
+  min-height: 60px;
+  border-radius: 18px;
+  color: white;
+  font-size: 20px;
+  font-weight: 700;
+  box-shadow: 0 3px 5px rgba(24, 32, 42, .12);
+}
+@media (max-width: 480px) {
+  .public-question-card { padding: 22px 20px; border-radius: 18px; }
+  .public-question-list { gap: 16px; }
+  .public-form-header h1 { font-size: 22px; }
+  .public-submit-row { padding-top: 16px; }
+}
