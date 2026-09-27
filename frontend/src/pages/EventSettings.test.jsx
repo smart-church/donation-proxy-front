@@ -19,18 +19,20 @@ beforeEach(async () => {
   await act(async () => root.render(<EventSettings />));
 });
 afterEach(async () => { await act(async () => root.unmount()); jest.useRealTimers(); });
-test('settings load choices and autosave the complete rule, then remove it on navigation', async () => {
+test('settings save and remove rules only when Save is clicked', async () => {
   expect(container.textContent).toContain('Шаблон письма по умолчанию');
   act(() => Simulate.click(container.querySelector('[data-testid=auto-mail-rule] button')));
   for (const [label, value] of [['Вопрос правила', '8'], ['Шаблон для ответа: Online', '2'], ['Шаблон для ответа Другое (свой вариант)', '1']]) {
     act(() => Simulate.change(container.querySelector(`[aria-label="${label}"]`), { target: { value } }));
   }
   await act(async () => jest.advanceTimersByTime(3000));
+  expect(api.updateEvent).not.toHaveBeenCalled();
+  await act(async () => Simulate.click(container.querySelector('[data-testid=event-settings-save]')));
   expect(api.updateEvent).toHaveBeenCalledWith('4', expect.objectContaining({
     success_template_id: 1, auto_mail_rule: { question_id: 8, other_template_id: 1, answers: [{ option: 'Online', template_id: 2 }, { option: 'Offline', template_id: null }] },
   }));
-  expect(container.textContent).toContain('Все изменения сохранены');
+  expect(mockNotify).toHaveBeenCalledWith('Параметры сохранены', 'success');
   act(() => Simulate.click(container.querySelector('[data-testid=auto-mail-rule] button')));
-  await act(async () => root.render(null));
+  await act(async () => Simulate.click(container.querySelector('[data-testid=event-settings-save]')));
   expect(api.updateEvent).toHaveBeenLastCalledWith('4', expect.objectContaining({ auto_mail_rule: null }));
 });

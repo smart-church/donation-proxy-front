@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import ReactQuill from "react-quill";
-import { Trash2, AlertTriangle, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
+import { Save, Trash2, AlertTriangle, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
 import * as api from "../mock/api";
 import { useApp } from "../components/AppContext";
 import Modal from "../components/Modal";
 import AutoMailRule from "../components/AutoMailRule";
-import useEventSettings from "../hooks/useEventSettings";
 
 const quillModules = {
   toolbar: [
@@ -19,49 +18,94 @@ const quillModules = {
 
 export default function EventSettings() {
   const { eventId } = useParams();
+  const [ev, setEv] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [fields, setFields] = useState([]);
-  const [ruleLoading, setRuleLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
   const [disapproving, setDisapproving] = useState(false);
+  const [errors, setErrors] = useState({});
   const [openDelete, setOpenDelete] = useState(false);
   const [confirmName, setConfirmName] = useState("");
   const { user, notify } = useApp();
   const navigate = useNavigate();
-  const { ev, patch, errors, setErrors, status, save, stop, resume } = useEventSettings(eventId, notify);
 
   useEffect(() => {
-    let active = true;
-    setTemplates([]); setFields([]); setRuleLoading(true);
-    Promise.all([api.listTemplates(eventId), api.getForm(eventId)]).then(([items, form]) => {
-      if (active) { setTemplates(items); setFields(form.fields); setRuleLoading(false); }
-    }).catch((error) => { if (active) notify(error.message_ru || "Не удалось загрузить вопросы и шаблоны", "error"); });
-    return () => { active = false; };
-  }, [eventId, notify]);
+    (async () => {
+      const [e, t, form] = await Promise.all([api.getEvent(eventId), api.listTemplates(eventId), api.getForm(eventId)]);
+      setFields(form.fields);
+      setEv(e);
+      setTemplates(t);
+    })();
+  }, [eventId]);
 
-  if (!ev) return <div className="surface p-12 text-center">{errors.general || <span className="spinner" />}</div>;
+  if (!ev) return <div className="surface p-12 text-center"><span className="spinner" /></div>;
+
+  const patch = (obj) => {
+    setEv({ ...ev, ...obj });
+    setErrors((current) => {
+      const next = { ...current };
+      if (Object.prototype.hasOwnProperty.call(obj, "name")) delete next.title;
+      if (
+        Object.prototype.hasOwnProperty.call(obj, "success_template_id") ||
+        Object.prototype.hasOwnProperty.call(obj, "auto_mail_enabled")
+      ) {
+        delete next.success_form_template;
+      }
+      if (Object.prototype.hasOwnProperty.call(obj, "auto_mail_rule")) delete next.auto_mail_rule;
+      delete next.general;
+      return next;
+    });
+  };
   const publicFormUrl = `${window.location.origin}/form/${eventId}`;
+
+  const save = async () => {
+    const validationErrors = {};
+    if (!ev.name.trim()) validationErrors.title = "Введите название мероприятия.";
+    if (ev.auto_mail_enabled && !ev.success_template_id) {
+      validationErrors.success_form_template = "Выберите шаблон письма для автоматической отправки.";
+    }
+    if (ev.auto_mail_rule && (!ev.auto_mail_rule.question_id || !Array.isArray(ev.auto_mail_rule.answers))) {
+      validationErrors.auto_mail_rule = "Выберите вопрос или удалите незавершённое правило.";
+    }
+    if (Object.keys(validationErrors).length) {
+      setErrors(validationErrors);
+      return;
+    }
+
+    setSaving(true);
+    setErrors({});
+    try {
+      await api.updateEvent(eventId, ev);
+      notify("Параметры сохранены", "success");
+    } catch (err) {
+      const fieldErrors = err.field_errors || {};
+      setErrors({
+        auto_mail_rule: fieldErrors.auto_mail_rule,
+        title: fieldErrors.title || fieldErrors.name,
+        success_form_template: fieldErrors.success_form_template,
+        general: fieldErrors.auto_mail_rule || fieldErrors.title || fieldErrors.name || fieldErrors.success_form_template
+          ? ""
+          : err.message_ru,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const del = async () => {
     if (confirmName.trim() !== ev.name.trim()) return;
-    await stop();
-    try {
-      await api.deleteEvent(eventId);
-      notify("Мероприятие удалено", "success");
-      navigate("/events");
-    } catch (error) {
-      resume();
-      setErrors({ general: error.message_ru || "Не удалось удалить мероприятие." });
-    }
+    await api.deleteEvent(eventId);
+    notify("Мероприятие удалено", "success");
+    navigate("/events");
   };
 
   const approve = async () => {
     setApproving(true);
     setErrors({});
     try {
-      if (!await save()) return;
       await api.approveEvent(eventId);
-      patch({ is_approved: true }, true);
+      setEv({ ...ev, is_approved: true });
       notify("Мероприятие одобрено", "success");
     } catch (err) {
       setErrors({ general: err.message_ru });
@@ -74,9 +118,8 @@ export default function EventSettings() {
     setDisapproving(true);
     setErrors({});
     try {
-      if (!await save()) return;
       await api.disapproveEvent(eventId);
-      patch({ is_approved: false, registration_open: false }, true);
+      setEv({ ...ev, is_approved: false, registration_open: false });
       notify("Одобрение мероприятия отозвано", "success");
     } catch (err) {
       setErrors({ general: err.message_ru });
@@ -115,11 +158,10 @@ export default function EventSettings() {
               Отозвать одобрение
             </button>
           )}
+          <button data-testid="event-settings-save" className="btn btn-primary" disabled={saving} onClick={save}>
+            {saving ? <span className="spinner" /> : <Save size={14} />} Сохранить
+          </button>
         </div>
-      </div>
-
-      <div className="text-sm mb-4" role="status" aria-live="polite" style={{ color: status === "error" ? "var(--danger)" : "var(--text-muted)" }}>
-        {{ idle: "Изменения сохраняются автоматически", pending: "Есть несохранённые изменения", saving: "Сохранение…", saved: "Все изменения сохранены", error: "Изменения не сохранены" }[status]}
       </div>
 
       {ev.registration_open && !ev.is_approved && (
@@ -216,10 +258,11 @@ export default function EventSettings() {
             </div>
           )}
         </div>
-        <AutoMailRule rule={ev.auto_mail_rule} fields={fields} templates={templates}
-          disabled={ruleLoading || !ev.auto_mail_enabled} error={errors.auto_mail_rule}
-          onChange={(rule) => patch({ auto_mail_rule: rule })} />
       </div>
+
+      <AutoMailRule rule={ev.auto_mail_rule} fields={fields} templates={templates}
+        disabled={saving || !ev.auto_mail_enabled} error={errors.auto_mail_rule}
+        onChange={(rule) => patch({ auto_mail_rule: rule })} />
 
       <div className="surface p-6 mb-6 space-y-5">
         <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Тексты страниц</h3>
