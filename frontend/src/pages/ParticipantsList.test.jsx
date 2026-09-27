@@ -21,7 +21,6 @@ async function exportQuestions(titles) {
   api.listParticipants.mockResolvedValue([{ id: 1, full_name: 'Test Person', email: 'person@example.com', status: 'pending',
     answers: Object.fromEntries(fields.map((field) => [field.id, [`answer-${field.id}.pdf`]])) }]);
   await act(async () => root.render(<ParticipantsList />));
-  for (const field of fields) await act(async () => Simulate.click(container.querySelector(`[data-testid="col-toggle-${field.id}"]`)));
   await act(async () => Simulate.click(container.querySelector('[data-testid="participants-export"]')));
   const sheet = XLSX.writeFile.mock.calls[0][0].Sheets['Участники'];
   return XLSX.utils.sheet_to_json(sheet, { header: 1 });
@@ -38,6 +37,34 @@ test('duplicate, generated and object-property names retain separate export colu
   expect(new Set(headers).size).toBe(headers.length);
   expect(headers).toHaveLength(10);
   expect(row.slice(4)).toEqual(Array.from({ length: 6 }, (_, index) => `answer-${index + 7}.pdf`));
+});
+
+test('exports hidden answers and every participant regardless of filters and pagination', async () => {
+  api.getForm.mockResolvedValue({ fields: [{ id: 9, title: 'Город проживания', type: 'text' }] });
+  const participants = Array.from({ length: 21 }, (_, index) => ({
+    id: index + 1, full_name: `Person ${index + 1}`, email: `person${index + 1}@example.com`,
+    status: 'pending', answers: { 9: `City ${index + 1}` },
+  }));
+  api.listParticipants.mockResolvedValue(participants);
+  await act(async () => root.render(<ParticipantsList />));
+  const download = async () => {
+    await act(async () => Simulate.click(container.querySelector('[data-testid="participants-export"]')));
+    const calls = XLSX.writeFile.mock.calls;
+    return XLSX.utils.sheet_to_json(calls[calls.length - 1][0].Sheets['Участники'], { header: 1 });
+  };
+  const allRows = await download();
+  expect(allRows[0]).toEqual(['#', 'ФИО', 'Почта', 'Статус', 'Город проживания']);
+  expect(allRows).toHaveLength(22);
+  expect(allRows[21]).toEqual([21, 'Person 21', 'person21@example.com', 'На проверке', 'City 21']);
+  await act(async () => Simulate.click(container.querySelector('[data-testid="pagination-next"]')));
+  expect(await download()).toEqual(allRows);
+  for (const id of ['email', 'status', '9']) {
+    await act(async () => Simulate.click(container.querySelector(`[data-testid="col-toggle-${id}"]`)));
+  }
+  await act(async () => Simulate.doubleClick(container.querySelector('[data-testid="col-toggle-email"]')));
+  await act(async () => Simulate.change(container.querySelector('[data-testid="col-filter-email"] input'), { target: { value: 'no-match' } }));
+  await act(async () => Simulate.click(container.querySelector('[data-testid="col-filter-apply-email"]')));
+  expect(await download()).toEqual(allRows);
 });
 
 async function openCreate() {

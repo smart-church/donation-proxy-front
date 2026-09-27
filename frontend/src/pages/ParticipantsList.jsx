@@ -148,11 +148,10 @@ export default function ParticipantsList() {
   };
 
   const exportXlsx = () => {
-    // Always export all participants, not just filtered ones
+    // Export every participant and field regardless of table visibility or filters.
     const headers = ["#", "ФИО", "Почта", "Статус"];
     const usedHeaders = new Set(headers);
-    const extraColumns = selectedCols.filter((id) => id !== "email" && id !== "status")
-      .map((id) => dynamicCols.find((column) => column.id === id)).filter(Boolean);
+    const extraColumns = dynamicCols.filter((column) => column.id !== "email" && column.id !== "status");
     extraColumns.forEach((column) => {
       let label = column.label;
       if (usedHeaders.has(label)) label = `${column.label} (#${column.id})`;

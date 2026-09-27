@@ -5,17 +5,21 @@ export default function AutoMailRule({ rule, fields, templates, disabled, error,
   const question = questions.find((field) => String(field.id) === String(rule?.question_id));
   const options = (question?.options || []).map((option) => typeof option === "object" ? option.name : option);
   return (
-    <div className="surface-soft p-4 space-y-3" data-testid="auto-mail-rule">
-      <div className="text-sm font-semibold">Письмо в зависимости от ответа</div>
+    <div className="surface p-6 mb-6 space-y-5" data-testid="auto-mail-rule">
+      <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Письмо в зависимости от ответа</h3>
       <p className="text-xs" style={{ color: "var(--text-dim)" }}>
         При совпадении ответа отправится выбранный шаблон. Иначе — письмо по умолчанию.
         Доступны вопросы с одним вариантом ответа. Для «Другое» можно назначить отдельное письмо независимо от введённого текста.
+      </p>
+      <p className="text-xs" style={{ color: "var(--text-dim)" }}>
+        Для настройки правила добавьте в анкету вопрос с одним вариантом ответа и включите «Автоматические письма» выше на этой странице.
+        Для отправки писем выберите «Шаблон письма по умолчанию». Если шаблонов ещё нет, создайте их в разделе «Шаблоны писем».
+        После настройки нажмите «Сохранить».
       </p>
       {!rule ? (
         <>
           <button type="button" className="btn btn-ghost" disabled={disabled || !questions.length}
             onClick={() => onChange({ question_id: "", answers: [] })}>Добавить правило</button>
-          {!questions.length && <p className="text-xs">Добавьте в анкету вопрос с одним вариантом ответа.</p>}
         </>
       ) : (
         <>
