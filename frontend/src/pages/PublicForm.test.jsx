@@ -7,6 +7,7 @@ import * as api from '../mock/api';
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({ useParams: () => ({ id: '1' }), useNavigate: () => mockNavigate }));
 jest.mock('../mock/api', () => ({ getPublicForm: jest.fn(), createFormUploadSession: jest.fn(),
+  downloadAgreement: jest.fn(), agreementDocumentUrl: (id) => '/api/v1/events/' + id + '/agreement.pdf',
   uploadAnswerFile: jest.fn(), removeAnswerFile: jest.fn(), submitParticipant: jest.fn() }));
 const policy = { allowed_extensions: ['pdf'], max_files: 2, max_file_bytes: 100, max_total_bytes: 200 };
 const fields = [
@@ -70,4 +71,31 @@ test('legacy form without files submits without an upload session', async () => 
   await mount(); await email('participant@example.com'); await submit();
   expect(api.createFormUploadSession).not.toHaveBeenCalled();
   expect(api.submitParticipant).toHaveBeenCalledWith('1', { 1: 'participant@example.com' }, [fields[0]], {}, undefined);
+});
+
+test('agreement starts unchecked and must be explicitly confirmed before submission', async () => {
+  const agreement = { id: 4, type: 'agreement', title: 'Согласие', required: true,
+    description: 'Выражаю согласие на обработку персональных данных', options: ['Подтверждаю'] };
+  const formFields = [fields[0], agreement];
+  api.getPublicForm.mockResolvedValue({ event: { name: 'Event', registration_open: true }, fields: formFields });
+  await mount();
+  await email('participant@example.com');
+  const checkbox = container.querySelector('[type=checkbox]');
+  expect(checkbox.checked).toBe(false);
+  expect(button().disabled).toBe(true);
+  const download = [...container.querySelectorAll('button')].find((button) => button.textContent.endsWith('.pdf'));
+  await act(async () => Simulate.click(download));
+  expect(api.downloadAgreement).toHaveBeenCalledWith('1', { publicView: true });
+  expect(mockNavigate).not.toHaveBeenCalled();
+  expect(container.querySelector('[type=email]').value).toBe('participant@example.com');
+  await submit();
+  expect(api.submitParticipant).not.toHaveBeenCalled();
+  await act(async () => Simulate.change(checkbox, { target: { checked: true } }));
+  expect(button().disabled).toBe(false);
+  await act(async () => Simulate.change(checkbox, { target: { checked: false } }));
+  expect(button().disabled).toBe(true);
+  await act(async () => Simulate.change(checkbox, { target: { checked: true } }));
+  await submit();
+  expect(api.submitParticipant).toHaveBeenCalledWith('1',
+    { 1: 'participant@example.com', 4: 'Подтверждаю' }, formFields, {}, undefined);
 });

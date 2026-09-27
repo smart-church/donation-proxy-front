@@ -1,3 +1,4 @@
+import AgreementDocument from "../components/AgreementDocument";
 import { ResourceList } from "../components/FormResources";
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -63,6 +64,7 @@ export function PublicForm() {
   const requiredFields = visibleFields.filter((f) => f.required && f.type !== "filler");
   const hasValue = (f) => {
     const v = data[f.id];
+    if (f.type === "agreement") return v === "Подтверждаю";
     const hasCustom = Object.prototype.hasOwnProperty.call(customValues, f.id)
       && String(customValues[f.id]).trim().length > 0;
     if (Array.isArray(v)) return v.length > 0 || hasCustom;
@@ -77,7 +79,7 @@ export function PublicForm() {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (submitting || Object.values(busyFields).some(Boolean)) return;
+    if (!isValid || submitting || Object.values(busyFields).some(Boolean)) return;
     setError("");
     setSubmitting(true);
     try {
@@ -177,7 +179,16 @@ function PublicField({ eventId, getSession, onUploadBusy, uploadEnabled, disable
       {label}
       {field.description && <div className="text-sm mb-2" style={{ color: "var(--text-muted)" }}>{field.description}</div>}
       <ResourceList publicView eventId={eventId} resources={field.resources} />
-      {field.type === "file" ? (
+      {field.type === "agreement" ? (
+        <>
+          <AgreementDocument eventId={eventId} publicView />
+          <label className="flex items-center gap-2 text-base">
+            <input type="checkbox" required disabled={disabled} checked={value === "Подтверждаю"}
+              onChange={(e) => onChange(e.target.checked ? "Подтверждаю" : "")} />
+            Подтверждаю
+          </label>
+        </>
+      ) : field.type === "file" ? (
         <PublicFileAnswer eventId={eventId} field={field} files={value || []} onChange={onChange}
           getSession={getSession} onBusyChange={onUploadBusy} enabled={uploadEnabled} disabled={disabled} />
       ) : field.type === "textarea" ? (

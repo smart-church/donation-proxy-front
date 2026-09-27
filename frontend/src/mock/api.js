@@ -130,6 +130,7 @@ const statusToApi = { pending: "New", accepted: "Accepted", rejected: "Rejected"
 export const participantToView = (p, fields) => {
   const answers = {};
   for (const field of fields) {
+    if (field.type === "agreement") continue;
     if (field.type === "full_name") answers[field.id] = p.full_name;
     else if (field.type === "email") answers[field.id] = p.email;
     else if (field.type === "file") answers[field.id] = (p.file_answers || []).find((answer) => String(answer.field_id) === String(field.id))?.files.map((file) => file.name) || [];
@@ -143,7 +144,7 @@ export const participantToView = (p, fields) => {
 export const participantToApi = (p, fields) => ({
   full_name: p.full_name,
   email: p.email,
-  fields: fields.filter((field) => !["full_name", "email", "filler", "file"].includes(field.type)).map((field) => {
+  fields: fields.filter((field) => !["full_name", "email", "filler", "file", "agreement"].includes(field.type)).map((field) => {
     const value = p.answers?.[field.id];
     return { key: field.title, value: Array.isArray(value) ? value.join(", ") : String(value ?? "") };
   }),
@@ -287,4 +288,18 @@ export async function removeAnswerFile(eventId, fileId, token, signal) {
   return client.delete(`/api/v1/public/events/${eventId}/form/uploads/${fileId}`, {
     headers: { 'X-Form-Upload-Token': token }, signal,
   }).then(result);
+}
+
+export const agreementDocumentUrl = (eventId) => `${(client.defaults.baseURL || "").replace(/\/$/, "")}/api/v1/events/${eventId}/agreement.pdf`;
+export async function downloadAgreement(eventId, { publicView = false } = {}) {
+  const options = { responseType: "blob", headers: { Accept: "application/pdf, application/json" } };
+  const response = publicView
+    ? await axios.get(agreementDocumentUrl(eventId), options)
+    : await client.get(`/api/v1/events/${eventId}/agreement.pdf`, options);
+  if (response.data.type !== "application/pdf") throw new Error("Expected a PDF document");
+  const url = URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = url; link.download = "Согласие на обработку персональных данных.pdf";
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

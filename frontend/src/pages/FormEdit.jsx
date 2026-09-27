@@ -10,12 +10,14 @@ import {
   X,
   ChevronRight,
 } from "lucide-react";
+import AgreementDocument from "../components/AgreementDocument";
 import FileQuestionSettings from "../components/FileQuestionSettings";
 import useEditableForm from "../hooks/useEditableForm";
 import FormResources, { ResourceList } from "../components/FormResources";
 import { useApp } from "../components/AppContext";
 
 const FIELD_TYPES = [
+  { value: "agreement", label: "Согласие" },
   { value: "text", label: "Текст" },
   { value: "file", label: "Загрузка файлов" },
   { value: "textarea", label: "Многострочный текст" },
@@ -59,6 +61,7 @@ export default function FormEdit() {
     return FIELD_TYPES.filter(
       (t) =>
         // Participant uploads are temporarily disabled; keep existing file questions readable.
+        (t.value !== "agreement" || currentField.type === "agreement") &&
         (t.value !== "file" || currentField.type === "file") && (
         !SYSTEM_FIELDS.includes(t.value) || // Non-system fields are always available
         t.value === currentField.type || // Current type is always available
@@ -104,6 +107,7 @@ export default function FormEdit() {
               eventId={eventId}
               onUploadBusy={(busy) => onUploadBusy(field.id, busy)}
               onResourcesChange={(update) => patchLocal(field.id, (current) => ({ resources: update(current.resources || []) }))}
+              agreementDocumentDisabled={structureBusy || uploading || saveStatus === "saving" || saveStatus === "error"}
               structureDisabled={structureBusy || uploading}
               onRetry={() => retry(field.id)}
               index={i + 1}
@@ -149,9 +153,10 @@ function SaveIndicator({ status }) {
   return null;
 }
 
-function FieldEditor({ eventId, onUploadBusy, onResourcesChange, structureDisabled, onRetry, field, index, total, onPatch, onMove, onRemove, disabled, error, getAvailableFieldTypes }) {
+function FieldEditor({ agreementDocumentDisabled, eventId, onUploadBusy, onResourcesChange, structureDisabled, onRetry, field, index, total, onPatch, onMove, onRemove, disabled, error, getAvailableFieldTypes }) {
   const [expanded, setExpanded] = useState(index === 1);
-  const isProtected = field.type === "full_name" || field.type === "email";
+  const isAgreement = field.type === "agreement";
+  const isProtected = isAgreement || field.type === "full_name" || field.type === "email";
 
   return (
     <div className="surface overflow-hidden" data-testid={`field-${field.id}`} style={{ opacity: disabled ? 0.6 : 1 }}>
@@ -203,7 +208,7 @@ function FieldEditor({ eventId, onUploadBusy, onResourcesChange, structureDisabl
             <div className="text-[11px] uppercase tracking-wider mb-3 flex items-center gap-2" style={{ color: "var(--text-muted)" }}>
               👁️ Предпросмотр
             </div>
-            <FieldPreview field={field} eventId={eventId} />
+            <FieldPreview field={field} eventId={eventId} agreementDocumentDisabled={agreementDocumentDisabled} />
           </div>
           {/* Settings */}
           <div className="p-5" style={{ borderColor: "var(--border)" }}>
@@ -211,8 +216,8 @@ function FieldEditor({ eventId, onUploadBusy, onResourcesChange, structureDisabl
               <Settings size={12} /> Настройки
             </div>
             {error && <button className="btn btn-ghost" disabled={disabled || structureDisabled} onClick={onRetry}>Повторить сохранение</button>}
-            <FieldSettings eventId={eventId} field={field} onPatch={onPatch} isProtected={isProtected} disabled={disabled} error={error} getAvailableFieldTypes={getAvailableFieldTypes} />
-            <FormResources eventId={eventId} resources={field.resources || []} onChange={onResourcesChange} onBusyChange={onUploadBusy} disabled={disabled} />
+            {isAgreement ? <p className="text-sm">Обязательное системное поле. Текст, подтверждение и ссылка на документ изменяются автоматически и недоступны для редактирования.</p> : <FieldSettings eventId={eventId} field={field} onPatch={onPatch} isProtected={isProtected} disabled={disabled} error={error} getAvailableFieldTypes={getAvailableFieldTypes} />}
+            {!isAgreement && <FormResources eventId={eventId} resources={field.resources || []} onChange={onResourcesChange} onBusyChange={onUploadBusy} disabled={disabled} />}
           </div>
         </div>
       )}
@@ -220,7 +225,7 @@ function FieldEditor({ eventId, onUploadBusy, onResourcesChange, structureDisabl
   );
 }
 
-function FieldPreview({ field, eventId }) {
+function FieldPreview({ field, eventId, agreementDocumentDisabled }) {
   if (field.type === "filler") {
     return (
       <div className="py-4">
@@ -244,9 +249,12 @@ function FieldPreview({ field, eventId }) {
           {field.description}
         </div>
       )}
+      {field.type === "agreement" && <AgreementDocument eventId={eventId} disabled={agreementDocumentDisabled} />}
       <ResourceList eventId={eventId} resources={field.resources} />
       <div className="mt-2">
-        {field.type === "file" ? (
+        {field.type === "agreement" ? (
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled /> Подтверждаю</label>
+        ) : field.type === "file" ? (
           <input type="file" disabled multiple className="input" />
         ) : field.type === "textarea" ? (
           <textarea disabled placeholder={field.placeholder} className="input" rows={3} />

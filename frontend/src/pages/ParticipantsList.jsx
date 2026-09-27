@@ -73,7 +73,7 @@ export default function ParticipantsList() {
       { id: "status", label: "Статус анкеты", value: (p) => statusMap(p.status), raw: (p) => p.status },
     ];
     const extra = form.fields
-      .filter((f) => f.type !== "full_name" && f.type !== "email" && f.type !== "filler")
+      .filter((f) => f.type !== "full_name" && f.type !== "email" && f.type !== "filler" && f.type !== "agreement")
       .map((f) => ({ id: f.id, label: form.fields.filter((other) => other.title === f.title).length > 1 ? `${f.title} (#${f.id})` : f.title, value: (p) => renderAnswer(p.answers?.[f.id]) }));
     return [...base, ...extra];
   }, [form]);

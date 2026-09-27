@@ -166,7 +166,7 @@ export default function ParticipantDetail() {
         </h3>
         {editError && <div className="text-sm mb-4" role="alert" style={{ color: "var(--danger)" }}>{editError}</div>}
         <div className="grid gap-4">
-          {form.fields.filter((f) => f.type !== "filler" && !f.hidden).map((f) => (
+          {form.fields.filter((f) => f.type !== "filler" && f.type !== "agreement" && !f.hidden).map((f) => (
             <div key={f.id}>
               <div className="label">{f.title}</div>
               {f.type === "file" ? (

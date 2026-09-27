@@ -13,3 +13,12 @@ test('file answers use stable field IDs; editing excludes files and export conta
   expect(sheet.A2.v).toBe('=1+1.pdf'); expect(sheet.A2.t).toBe('s'); expect(sheet.A2.f).toBeUndefined();
   expect(sheet.B2.v).toBe('second.docx'); expect(JSON.stringify(sheet)).not.toContain('secret-id');
 });
+
+test('agreement is neither read as an answer nor sent when editing a participant', () => {
+  const fields = [{ id: 1, type: 'agreement', title: 'Согласие' }, { id: 2, type: 'text', title: 'Город' }];
+  const participant = participantToView({ full_name: 'Ivan', email: 'i@example.com', status: 'New',
+    fields: [{ key: 'Город', value: 'Москва' }] }, fields);
+  expect(participant.answers).toEqual({ 2: 'Москва' });
+  participant.answers[1] = 'Подтверждаю';
+  expect(participantToApi(participant, fields).fields).toEqual([{ key: 'Город', value: 'Москва' }]);
+});

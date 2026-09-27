@@ -40,7 +40,7 @@ test('duplicate, generated and object-property names retain separate export colu
 });
 
 test('exports hidden answers and every participant regardless of filters and pagination', async () => {
-  api.getForm.mockResolvedValue({ fields: [{ id: 9, title: 'Город проживания', type: 'text' }] });
+  api.getForm.mockResolvedValue({ fields: [{ id: 9, title: 'Город проживания', type: 'text' }, { id: 10, title: 'Согласие', type: 'agreement' }] });
   const participants = Array.from({ length: 21 }, (_, index) => ({
     id: index + 1, full_name: `Person ${index + 1}`, email: `person${index + 1}@example.com`,
     status: 'pending', answers: { 9: `City ${index + 1}` },
