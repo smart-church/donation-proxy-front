@@ -120,11 +120,11 @@ export default function Layout({ children }) {
     <div className="grain min-h-screen flex" style={{ background: "var(--bg)" }}>
       {/* Sidebar */}
       <aside
-        className="w-[236px] shrink-0 flex flex-col border-r"
+        className="sticky top-0 self-start h-[100dvh] w-[236px] shrink-0 flex flex-col border-r"
         style={{ background: "var(--sidebar)", borderColor: "var(--border)" }}
         data-testid="sidebar"
       >
-        <div className="px-5 pt-5 pb-4 flex items-center gap-2">
+        <div className="px-5 pt-5 pb-4 shrink-0 flex items-center gap-2">
           <div
             className="w-7 h-7 rounded-md grid place-items-center"
             style={{ background: "var(--brand)", color: "#04120b" }}
@@ -136,7 +136,7 @@ export default function Layout({ children }) {
           </div>
         </div>
 
-        <nav className="px-3 flex-1 overflow-y-auto pb-4">
+        <nav className="px-3 flex-1 min-h-0 overflow-y-auto pb-4">
           <div className="side-heading">Мероприятия</div>
           <SideLink to="/events" icon={ClipboardList} label="Список" testid="side-events-list" end />
           <SideLink to="/events/create" icon={PlusCircle} label="Создать" testid="side-events-create" />
@@ -181,7 +181,7 @@ export default function Layout({ children }) {
         </nav>
 
         {/* Theme toggle */}
-        <div className="px-4 py-4 border-t" style={{ borderColor: "var(--border)" }}>
+        <div className="px-4 py-4 shrink-0 border-t" style={{ borderColor: "var(--border)" }}>
           <button
             data-testid="theme-toggle"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}

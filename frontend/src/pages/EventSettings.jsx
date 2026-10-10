@@ -16,9 +16,42 @@ const quillModules = {
   ],
 };
 
+export function toLocalDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatDateTimeDigits(value) {
+  const digits = value.replace(/\D/g, "").slice(0, 12);
+  const parts = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8), digits.slice(8, 10), digits.slice(10, 12)];
+  return parts.reduce((result, part, index) => part ? result + ["", "/", "/", " ", ":"][index] + part : result, "");
+}
+
+function parseLocalDateTime(value) {
+  if (!value.trim()) return null;
+  const match = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})$/.exec(value.trim());
+  if (!match) return undefined;
+  const [, day, month, year, hour, minute] = match.map(Number);
+  if (year < 1000 || month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return undefined;
+  const date = new Date(year, month - 1, day, hour, minute);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day ||
+      date.getHours() !== hour || date.getMinutes() !== minute) return undefined;
+  return date.toISOString();
+}
+
+const dateTimeTemplate = "дд/мм/гггг чч:мм";
+
+const scheduleKeys = ["registration_starts_at", "registration_ends_at", "participant_data_delete_at"];
+const dateInputsFor = (event) => Object.fromEntries(scheduleKeys.map((key) => [key, toLocalDateTime(event[key])]));
+
 export default function EventSettings() {
   const { eventId } = useParams();
   const [ev, setEv] = useState(null);
+  const [dateInputs, setDateInputs] = useState({});
+  const [now, setNow] = useState(() => Date.now());
   const [templates, setTemplates] = useState([]);
   const [fields, setFields] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -31,15 +64,25 @@ export default function EventSettings() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     (async () => {
       const [e, t, form] = await Promise.all([api.getEvent(eventId), api.listTemplates(eventId), api.getForm(eventId)]);
       setFields(form.fields);
       setEv(e);
+      setDateInputs(dateInputsFor(e));
       setTemplates(t);
     })();
   }, [eventId]);
 
   if (!ev) return <div className="surface p-12 text-center"><span className="spinner" /></div>;
+
+  const registrationOpen = (ev.registration_open ||
+    (ev.registration_starts_at && new Date(ev.registration_starts_at).getTime() <= now)) &&
+    (!ev.registration_ends_at || new Date(ev.registration_ends_at).getTime() > now);
 
   const patch = (obj) => {
     setEv({ ...ev, ...obj });
@@ -53,6 +96,14 @@ export default function EventSettings() {
         delete next.success_form_template;
       }
       if (Object.prototype.hasOwnProperty.call(obj, "auto_mail_rule")) delete next.auto_mail_rule;
+      for (const key of ["registration_starts_at", "registration_ends_at"]) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+          delete next.registration_starts_at;
+          delete next.registration_ends_at;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(obj, "participant_data_delete_at")) delete next.participant_data_delete_at;
+      if (Object.prototype.hasOwnProperty.call(obj, "agreement_text")) delete next.agreement_text;
       delete next.general;
       return next;
     });
@@ -68,6 +119,17 @@ export default function EventSettings() {
     if (ev.auto_mail_rule && (!ev.auto_mail_rule.question_id || !Array.isArray(ev.auto_mail_rule.answers))) {
       validationErrors.auto_mail_rule = "Выберите вопрос или удалите незавершённое правило.";
     }
+    const schedule = {};
+    for (const key of scheduleKeys) {
+      schedule[key] = dateInputs[key] === toLocalDateTime(ev[key])
+        ? ev[key] || null
+        : parseLocalDateTime(dateInputs[key] || "");
+      if (schedule[key] === undefined) validationErrors[key] = "Введите дату и время в формате дд/мм/гггг чч:мм (00–23 часа).";
+    }
+    if (schedule.registration_starts_at && schedule.registration_ends_at &&
+        new Date(schedule.registration_ends_at) <= new Date(schedule.registration_starts_at)) {
+      validationErrors.registration_ends_at = "Окончание регистрации должно быть позже начала.";
+    }
     if (Object.keys(validationErrors).length) {
       setErrors(validationErrors);
       return;
@@ -76,15 +138,22 @@ export default function EventSettings() {
     setSaving(true);
     setErrors({});
     try {
-      await api.updateEvent(eventId, ev);
+      await api.updateEvent(eventId, { ...ev, ...schedule });
+      const saved = await api.getEvent(eventId);
+      setEv(saved);
+      setDateInputs(dateInputsFor(saved));
       notify("Параметры сохранены", "success");
     } catch (err) {
       const fieldErrors = err.field_errors || {};
       setErrors({
+        participant_data_delete_at: fieldErrors.participant_data_delete_at,
+        registration_starts_at: fieldErrors.registration_starts_at,
+        registration_ends_at: fieldErrors.registration_ends_at,
+        agreement_text: fieldErrors.agreement_text,
         auto_mail_rule: fieldErrors.auto_mail_rule,
         title: fieldErrors.title || fieldErrors.name,
         success_form_template: fieldErrors.success_form_template,
-        general: fieldErrors.auto_mail_rule || fieldErrors.title || fieldErrors.name || fieldErrors.success_form_template
+        general: fieldErrors.agreement_text || fieldErrors.participant_data_delete_at || fieldErrors.registration_starts_at || fieldErrors.registration_ends_at || fieldErrors.auto_mail_rule || fieldErrors.title || fieldErrors.name || fieldErrors.success_form_template
           ? ""
           : err.message_ru,
       });
@@ -164,7 +233,7 @@ export default function EventSettings() {
         </div>
       </div>
 
-      {ev.registration_open && !ev.is_approved && (
+      {registrationOpen && !ev.is_approved && (
         <div
           className="mb-6 p-3 rounded-lg"
           style={{
@@ -217,7 +286,8 @@ export default function EventSettings() {
             </div>
             <input
               type="checkbox"
-              checked={ev.registration_open}
+              disabled={!!ev.registration_ends_at && new Date(ev.registration_ends_at).getTime() <= now}
+              checked={!!registrationOpen}
               onChange={(e) => patch({ registration_open: e.target.checked })}
               data-testid="event-reg-open"
               className="w-4 h-4 accent-[color:var(--brand)]"
@@ -237,6 +307,72 @@ export default function EventSettings() {
             />
           </label>
         </div>
+
+        <div className="grid md:grid-cols-2 gap-4">
+          {[["registration_starts_at", "Дата начала регистрации"], ["registration_ends_at", "Дата окончания регистрации"], ["participant_data_delete_at", "Дата автоудаления данных участников"]].map(([key, label]) => (
+            <div key={key}>
+              <label className="label" htmlFor={key}>{label}</label>
+              <div className="relative">
+                <input
+                  id={key}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={16}
+                  aria-invalid={!!errors[key]}
+                  className={`input font-mono ${errors[key] ? "error" : ""}`}
+                  value={dateInputs[key] || ""}
+                  onChange={(e) => {
+                    const input = e.target;
+                    let digits = input.value.replace(/\D/g, "");
+                    let digitsBeforeCursor = typeof input.selectionStart === "number"
+                      ? input.value.slice(0, input.selectionStart).replace(/\D/g, "").length
+                      : null;
+                    const deletion = e.nativeEvent?.inputType;
+                    if (digitsBeforeCursor !== null && digits === (dateInputs[key] || "").replace(/\D/g, "") &&
+                        (deletion === "deleteContentBackward" || deletion === "deleteContentForward")) {
+                      const index = deletion === "deleteContentBackward" ? digitsBeforeCursor - 1 : digitsBeforeCursor;
+                      if (index >= 0) {
+                        digits = digits.slice(0, index) + digits.slice(index + 1);
+                        if (deletion === "deleteContentBackward") digitsBeforeCursor = index;
+                      }
+                    }
+                    const value = formatDateTimeDigits(digits);
+                    if (digitsBeforeCursor !== null) {
+                      let cursor = 0;
+                      let count = 0;
+                      while (cursor < value.length && count < digitsBeforeCursor) {
+                        if (/\d/.test(value[cursor])) count += 1;
+                        cursor += 1;
+                      }
+                      requestAnimationFrame(() => input.setSelectionRange(cursor, cursor));
+                    }
+                    setDateInputs((current) => ({ ...current, [key]: value }));
+                    const parsed = parseLocalDateTime(value);
+                    patch({ [key]: parsed === undefined ? ev[key] : parsed });
+                  }}
+                  data-testid={`event-${key}`}
+                />
+                <div aria-hidden="true" className="absolute inset-0 border border-transparent rounded-lg px-3 py-2 text-sm font-mono whitespace-pre pointer-events-none overflow-hidden">
+                  <span style={{ visibility: "hidden" }}>{dateInputs[key] || ""}</span>
+                  <span data-testid={`event-${key}-template`} style={{ color: "var(--text-muted)" }}>{dateTimeTemplate.slice((dateInputs[key] || "").length)}</span>
+                </div>
+              </div>
+              {errors[key] && <div className="text-xs mt-1" role="alert" style={{ color: "var(--danger)" }}>{errors[key]}</div>}
+            </div>
+          ))}
+        </div>
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Время в вашем часовом поясе ({Intl.DateTimeFormat().resolvedOptions().timeZone}).
+          Начало автоматически открывает регистрацию, окончание закрывает её.
+          Одобрение администратора обязательно. Регистрацию можно открыть вручную до даты начала.
+          В дату автоудаления безвозвратно очищаются участники, их ответы и файлы, сессии загрузки и исходящие письма только этого мероприятия.
+        </p>
+
+        {ev.participant_data_deleted_at && (
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            Данные участников очищены: {toLocalDateTime(ev.participant_data_deleted_at)}.
+          </p>
+        )}
 
         <div>
           <label className="label">Шаблон письма по умолчанию</label>
@@ -263,6 +399,28 @@ export default function EventSettings() {
       <AutoMailRule rule={ev.auto_mail_rule} fields={fields} templates={templates}
         disabled={saving || !ev.auto_mail_enabled} error={errors.auto_mail_rule}
         onChange={(rule) => patch({ auto_mail_rule: rule })} />
+
+      <div className="surface p-6 mb-6 space-y-5">
+        <div>
+          <label className="label" htmlFor="event-agreement-text">Текст согласия на обработку персональных данных</label>
+          <textarea
+            id="event-agreement-text"
+            data-testid="event-agreement-text"
+            className={`input ${errors.agreement_text ? "error" : ""}`}
+            rows={10}
+            maxLength={50000}
+            value={ev.agreement_text || ""}
+            onChange={(e) => patch({ agreement_text: e.target.value })}
+            aria-describedby="event-agreement-text-help"
+            aria-invalid={!!errors.agreement_text}
+          />
+          <p id="event-agreement-text-help" className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+            Этот текст заменит автоматически сформированное согласие в PDF после сохранения.
+            Если оставить поле пустым, используется автоматический текст.
+          </p>
+          {errors.agreement_text && <div className="text-xs mt-1" role="alert" style={{ color: "var(--danger)" }}>{errors.agreement_text}</div>}
+        </div>
+      </div>
 
       <div className="surface p-6 mb-6 space-y-5">
         <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Тексты страниц</h3>
