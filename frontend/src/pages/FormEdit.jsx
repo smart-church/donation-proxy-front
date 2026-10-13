@@ -216,7 +216,7 @@ function FieldEditor({ agreementDocumentDisabled, eventId, onUploadBusy, onResou
               <Settings size={12} /> Настройки
             </div>
             {error && <button className="btn btn-ghost" disabled={disabled || structureDisabled} onClick={onRetry}>Повторить сохранение</button>}
-            {isAgreement ? <p className="text-sm">Обязательное системное поле. Текст, подтверждение и ссылка на документ изменяются автоматически и недоступны для редактирования.</p> : <FieldSettings eventId={eventId} field={field} onPatch={onPatch} isProtected={isProtected} disabled={disabled} error={error} getAvailableFieldTypes={getAvailableFieldTypes} />}
+            {isAgreement ? <p className="text-sm">Обязательное системное поле. Текст в анкете, подтверждение и ссылка на документ изменяются автоматически и недоступны для редактирования. Текст согласия можно отредактировать во вкладке "Параметры"</p> : <FieldSettings eventId={eventId} field={field} onPatch={onPatch} isProtected={isProtected} disabled={disabled} error={error} getAvailableFieldTypes={getAvailableFieldTypes} />}
             {!isAgreement && <FormResources eventId={eventId} resources={field.resources || []} onChange={onResourcesChange} onBusyChange={onUploadBusy} disabled={disabled} />}
           </div>
         </div>
