@@ -7,12 +7,13 @@ const mockNotify = jest.fn();
 jest.mock('react-router-dom', () => ({ useParams: () => ({ eventId: '4' }), useNavigate: () => jest.fn() }));
 jest.mock('react-quill', () => () => null);
 jest.mock('../components/AppContext', () => ({ useApp: () => ({ user: { is_admin: false }, notify: mockNotify }) }));
-jest.mock('../mock/api', () => ({ getEvent: jest.fn(), getForm: jest.fn(), listTemplates: jest.fn(), updateEvent: jest.fn() }));
+jest.mock('../mock/api', () => ({ getEvent: jest.fn(), getForm: jest.fn(), listTemplates: jest.fn(), updateEvent: jest.fn(), listEventApiTokens: jest.fn() }));
 let root, container;
 beforeEach(async () => {
   global.IS_REACT_ACT_ENVIRONMENT = true; jest.useFakeTimers(); jest.clearAllMocks();
   api.getEvent.mockResolvedValue({ name: 'Event', auto_mail_enabled: true, success_template_id: 1, registration_open: false, auto_mail_rule: null });
   api.getForm.mockResolvedValue({ fields: [{ id: 8, title: 'Format', type: 'radio', allow_other: true, options: ['Online', 'Offline'] }] });
+  api.listEventApiTokens.mockResolvedValue([]);
   api.listTemplates.mockResolvedValue([{ id: 1, name: 'Default' }, { id: 2, name: 'Online letter' }]);
   api.updateEvent.mockImplementation(async (_id, event) => { api.getEvent.mockResolvedValue({ ...event }); });
   container = document.createElement('div'); root = createRoot(container);

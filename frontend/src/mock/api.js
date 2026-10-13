@@ -317,3 +317,16 @@ export async function downloadAgreement(eventId, { publicView = false } = {}) {
   document.body.appendChild(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+
+export async function listEventApiTokens(eventId) {
+  const response = await client.get(`/api/v1/events/${eventId}/api-tokens`).then(result);
+  return response.tokens || [];
+}
+export async function createEventApiToken(eventId, payload) {
+  return client.post(`/api/v1/events/${eventId}/api-tokens`, payload).then(result);
+}
+export async function revokeEventApiToken(eventId, tokenId) {
+  await client.delete(`/api/v1/events/${eventId}/api-tokens/${tokenId}`);
+  return ok();
+}

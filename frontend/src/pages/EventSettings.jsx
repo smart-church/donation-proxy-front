@@ -6,6 +6,8 @@ import * as api from "../mock/api";
 import { useApp } from "../components/AppContext";
 import Modal from "../components/Modal";
 import AutoMailRule from "../components/AutoMailRule";
+import EventApiTokens from "../components/EventApiTokens";
+import { formatDateInput } from "../lib/dateInput";
 
 const quillModules = {
   toolbar: [
@@ -22,12 +24,6 @@ export function toLocalDateTime(value) {
   if (Number.isNaN(date.getTime())) return "";
   const pad = (number) => String(number).padStart(2, "0");
   return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function formatDateTimeDigits(value) {
-  const digits = value.replace(/\D/g, "").slice(0, 12);
-  const parts = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8), digits.slice(8, 10), digits.slice(10, 12)];
-  return parts.reduce((result, part, index) => part ? result + ["", "/", "/", " ", ":"][index] + part : result, "");
 }
 
 function parseLocalDateTime(value) {
@@ -323,29 +319,7 @@ export default function EventSettings() {
                   value={dateInputs[key] || ""}
                   onChange={(e) => {
                     const input = e.target;
-                    let digits = input.value.replace(/\D/g, "");
-                    let digitsBeforeCursor = typeof input.selectionStart === "number"
-                      ? input.value.slice(0, input.selectionStart).replace(/\D/g, "").length
-                      : null;
-                    const deletion = e.nativeEvent?.inputType;
-                    if (digitsBeforeCursor !== null && digits === (dateInputs[key] || "").replace(/\D/g, "") &&
-                        (deletion === "deleteContentBackward" || deletion === "deleteContentForward")) {
-                      const index = deletion === "deleteContentBackward" ? digitsBeforeCursor - 1 : digitsBeforeCursor;
-                      if (index >= 0) {
-                        digits = digits.slice(0, index) + digits.slice(index + 1);
-                        if (deletion === "deleteContentBackward") digitsBeforeCursor = index;
-                      }
-                    }
-                    const value = formatDateTimeDigits(digits);
-                    if (digitsBeforeCursor !== null) {
-                      let cursor = 0;
-                      let count = 0;
-                      while (cursor < value.length && count < digitsBeforeCursor) {
-                        if (/\d/.test(value[cursor])) count += 1;
-                        cursor += 1;
-                      }
-                      requestAnimationFrame(() => input.setSelectionRange(cursor, cursor));
-                    }
+                    const value = formatDateInput(input, dateInputs[key] || "", e.nativeEvent?.inputType);
                     setDateInputs((current) => ({ ...current, [key]: value }));
                     const parsed = parseLocalDateTime(value);
                     patch({ [key]: parsed === undefined ? ev[key] : parsed });
@@ -429,6 +403,8 @@ export default function EventSettings() {
         <QuillField label="Текст ошибки отправки" value={ev.fail_form_description} onChange={(v) => patch({ fail_form_description: v })} />
         <QuillField label="Регистрация закрыта" value={ev.closed_registration_description} onChange={(v) => patch({ closed_registration_description: v })} />
       </div>
+
+      <EventApiTokens key={eventId} eventId={eventId} />
 
       <div
         className="rounded-xl p-5 border"
