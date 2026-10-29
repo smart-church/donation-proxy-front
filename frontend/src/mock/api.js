@@ -259,6 +259,14 @@ export async function recordEventView(eventId) { localStorage.setItem(LAST_EVENT
 export function clearLastViewedEvent() { localStorage.removeItem(LAST_EVENT_KEY); }
 export const ERRORS = {};
 
+export async function createVtbSandboxQr(payload) {
+  return client.post("/api/v1/admin/vtb-sandbox/qr", payload).then(result);
+}
+
+export async function getVtbSandboxQrStatus(payload) {
+  return client.post("/api/v1/admin/vtb-sandbox/qr/status", payload).then(result);
+}
+
 // Shared file infrastructure. Mail/form attachment workflows are added in later stages.
 export async function getFileLimits(eventId) {
   return client.get(`/api/v1/events/${eventId}/file/limits`).then(result);

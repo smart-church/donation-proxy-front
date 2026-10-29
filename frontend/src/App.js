@@ -17,6 +17,7 @@ import AdminOrganizers from "./pages/AdminOrganizers";
 import Profile from "./pages/Profile";
 import { PublicFail, PublicForm, PublicSuccess } from "./pages/PublicForm";
 import ResetPassword from "./pages/ResetPassword";
+import VtbSandbox from "./pages/VtbSandbox";
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, ready } = useApp();
@@ -64,6 +65,7 @@ function AppRoutes() {
                 <Route path="/events/:eventId/managers" element={<Managers />} />
                 <Route path="/organizers" element={<ProtectedRoute adminOnly><AdminOrganizers /></ProtectedRoute>} />
                 <Route path="/admins" element={<ProtectedRoute adminOnly><Admins /></ProtectedRoute>} />
+                <Route path="/admin/vtb-sandbox" element={<ProtectedRoute adminOnly><VtbSandbox /></ProtectedRoute>} />
                 <Route path="*" element={<Navigate to="/events" replace />} />
               </Routes>
             </Layout>

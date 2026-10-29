@@ -11,6 +11,7 @@ import {
   Settings,
   UserCog,
   Shield,
+  QrCode,
   Sun,
   Moon,
   PlusCircle,
@@ -176,6 +177,7 @@ export default function Layout({ children }) {
               <div className="side-heading">Администрация</div>
               <SideLink to="/organizers" icon={Users} label="Пользователи" testid="side-organizers" />
               <SideLink to="/admins" icon={Shield} label="Администраторы" testid="side-admins" />
+              <SideLink to="/admin/vtb-sandbox" icon={QrCode} label="СБП ВТБ: платёжные ссылки" testid="side-vtb-sandbox" />
             </>
           )}
         </nav>
