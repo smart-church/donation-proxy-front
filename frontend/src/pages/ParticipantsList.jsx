@@ -61,6 +61,8 @@ export default function ParticipantsList() {
       if (!active) return;
       setForm(f);
       setParticipants(p);
+      setSelectedCols((current) => p.some((person) => person.donation)
+        ? [...new Set([...current, "donation"])] : current.filter((column) => column !== "donation"));
       setCurrentPage(1);
       setLoading(false);
     })();
@@ -72,11 +74,12 @@ export default function ParticipantsList() {
       { id: "email", label: "Почта", value: (p) => p.email },
       { id: "status", label: "Статус анкеты", value: (p) => statusMap(p.status), raw: (p) => p.status },
     ];
+    if (participants.some((p) => p.donation)) base.push({ id: "donation", label: "Пожертвование", value: (p) => p.donation?.label || "" });
     const extra = form.fields
       .filter((f) => f.type !== "full_name" && f.type !== "email" && f.type !== "filler" && f.type !== "agreement")
       .map((f) => ({ id: f.id, label: form.fields.filter((other) => other.title === f.title).length > 1 ? `${f.title} (#${f.id})` : f.title, value: (p) => renderAnswer(p.answers?.[f.id]) }));
     return [...base, ...extra];
-  }, [form]);
+  }, [form, participants]);
 
   const stats = useMemo(() => {
     const total = participants.length;

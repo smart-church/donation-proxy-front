@@ -199,3 +199,12 @@ test('agreement validation errors appear next to the editor and clear on editing
   expect(container.textContent).not.toContain('Ошибка текста согласия');
   expect(input.getAttribute('aria-invalid')).toBe('false');
 });
+
+test('donation amount persists with event settings and stays visible after save', async () => {
+  const input = container.querySelector('[data-testid="event-donation-amount"]');
+  expect(input.value).toBe('');
+  await act(async () => Simulate.change(input, { target: { value: '12.30' } }));
+  await act(async () => Simulate.click(container.querySelector('[data-testid="event-settings-save"]')));
+  expect(api.updateEvent).toHaveBeenCalledWith('4', expect.objectContaining({ donation_amount: '12.30' }));
+  expect(container.querySelector('[data-testid="event-donation-amount"]').value).toBe('12.30');
+});

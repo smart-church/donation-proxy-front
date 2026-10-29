@@ -123,6 +123,7 @@ const userToView = (u) => {
 };
 const eventToView = (e) => ({ ...e, name: e.name ?? e.title, registration_open: e.is_active, auto_mail_enabled: e.use_auto_mail, success_template_id: e.success_form_template });
 const eventToApi = (e) => ({
+  ...(e.donation_amount !== undefined ? { donation_amount: e.donation_amount === "" ? null : e.donation_amount } : {}),
   title: e.name,
   description: e.description,
   ...(e.agreement_text !== undefined ? { agreement_text: e.agreement_text } : {}),
@@ -216,7 +217,7 @@ export async function createParticipant(eventId, payload, formFields = []) {
 export async function getParticipant(eventId, id) { const [p, form] = await Promise.all([client.get(`/api/v1/events/${eventId}/participants/${id}`).then(result), getForm(eventId)]); return participantToView(p, form.fields); }
 export async function updateParticipant(eventId, id, patch) { if (Object.keys(patch).length === 1 && patch.status) await client.patch(`/api/v1/events/${eventId}/participants/${id}`, { status: statusToApi[patch.status] || patch.status }); else { const form = await getForm(eventId); await client.put(`/api/v1/events/${eventId}/participants/${id}`, participantToApi(patch, form.fields)); } return ok(); }
 export async function deleteParticipant(eventId, id) { await client.delete(`/api/v1/events/${eventId}/participants/${id}`); return ok(); }
-export async function submitParticipant(eventId, answers, formFields, customValues = {}, uploadToken) {
+export async function submitParticipant(eventId, answers, formFields, customValues = {}, uploadToken, idempotencyKey) {
   const fields = formFields.filter((f) => f.type !== "filler").map((f) => {
     const answer = { value: f.type === "file" ? (answers[f.id] || []).map((file) => file.file_id) : answers[f.id] ?? (f.type === "checkbox" ? [] : "") };
     if (Object.prototype.hasOwnProperty.call(customValues, f.id)) {
@@ -224,8 +225,21 @@ export async function submitParticipant(eventId, answers, formFields, customValu
     }
     return answer;
   });
-  await client.post(`/form/${eventId}/submit`, { fields }, { headers: uploadToken ? { "X-Form-Upload-Token": uploadToken } : {} });
-  return ok();
+  const response = await client.post(`/form/${eventId}/submit`, { fields }, { headers: {
+    Accept: "application/json", ...(uploadToken ? { "X-Form-Upload-Token": uploadToken } : {}),
+    ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+  } });
+  return typeof response.data === "object" && response.data ? response.data : ok();
+}
+
+export async function getDonation(regId, resultOnly = false) {
+  return client.get(`/api/v1/public/donations/${encodeURIComponent(regId)}${resultOnly ? "/result" : ""}`).then(result);
+}
+export async function checkParticipantDonation(eventId, participantId) {
+  return client.post(`/api/v1/events/${eventId}/participants/${participantId}/donation/check`).then(result);
+}
+export async function getPaymentReview() {
+  return client.get('/api/v1/admin/payments/review').then(result);
 }
 
 const mailToView = (m) => ({ ...m, recipients: [m.receiver] });

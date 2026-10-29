@@ -25,6 +25,8 @@ export default function ParticipantDetail() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const [checkingDonation, setCheckingDonation] = useState(false);
+  const [donationError, setDonationError] = useState("");
 
   useEffect(() => {
     if (!eventId) return;
@@ -154,10 +156,26 @@ export default function ParticipantDetail() {
           <div className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>Дата регистрации</div>
           <div className="text-sm font-medium">{participant.registered_at ? new Date(participant.registered_at).toLocaleString("ru-RU") : "—"}</div>
         </div>
-        <div className="surface p-4">
-          <div className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>Дата оплаты</div>
-          <div className="text-sm font-medium">{participant.payment_date ? new Date(participant.payment_date).toLocaleString("ru-RU") : "—"}</div>
-        </div>
+        {participant.donation && <div className="surface p-4 space-y-2" data-testid="participant-donation">
+          <div className="text-xs" style={{ color: "var(--text-muted)" }}>Пожертвование</div>
+          <div className="text-sm font-semibold">{participant.donation.label}</div>
+          <div className="text-sm">Сумма пожертвования: {participant.donation.amount} ₽</div>
+          {participant.donation.paid_amount != null && <div className="text-sm">Получено: {participant.donation.paid_amount} ₽</div>}
+          {participant.donation.paid_at && <div className="text-sm">Дата поступления: {new Date(participant.donation.paid_at).toLocaleString("ru-RU")}</div>}
+          {participant.donation.last_checked_at && <div className="text-xs">Последняя сверка: {new Date(participant.donation.last_checked_at).toLocaleString("ru-RU")}</div>}
+          <a className="link text-sm" href={participant.donation.donation_url} target="_blank" rel="noopener noreferrer">Ссылка для пожертвования</a>
+          {donationError && <p role="alert" className="text-sm" style={{ color: "var(--danger)" }}>{donationError}</p>}
+          <button className="btn btn-ghost" disabled={checkingDonation} onClick={async () => {
+            setCheckingDonation(true); setDonationError("");
+            try {
+              const response = await api.checkParticipantDonation(eventId, id);
+              setParticipant((current) => ({ ...current, donation: response.donation }));
+              if (response.check_message) setDonationError(response.check_message);
+              else if (response.donation?.last_error) setDonationError("Не удалось подтвердить актуальное поступление. Показан последний сохранённый статус.");
+            } catch (err) { setDonationError(err.message_ru || "Не удалось проверить поступление."); }
+            finally { setCheckingDonation(false); }
+          }}>{checkingDonation ? "Проверяем…" : "Проверить поступление"}</button>
+        </div>}
       </div>
 
       <div className="surface p-6">

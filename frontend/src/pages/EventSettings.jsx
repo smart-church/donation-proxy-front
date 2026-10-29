@@ -142,6 +142,7 @@ export default function EventSettings() {
     } catch (err) {
       const fieldErrors = err.field_errors || {};
       setErrors({
+        donation_amount: fieldErrors.donation_amount,
         participant_data_delete_at: fieldErrors.participant_data_delete_at,
         registration_starts_at: fieldErrors.registration_starts_at,
         registration_ends_at: fieldErrors.registration_ends_at,
@@ -251,6 +252,14 @@ export default function EventSettings() {
       )}
 
       <div className="surface p-6 mb-6 space-y-5">
+        <div>
+          <label className="label" htmlFor="donation-amount">Сумма пожертвования, ₽</label>
+          <input id="donation-amount" data-testid="event-donation-amount" type="number" min="0" max="1000000" step="0.01"
+            className="input" value={ev.donation_amount ?? ""}
+            onChange={(e) => patch({ donation_amount: e.target.value })} placeholder="Не задана" />
+          <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>При положительной сумме после отправки анкеты участник переходит к пожертвованию. Изменения применяются к новым платежам.</p>
+          {errors.donation_amount && <p role="alert" className="text-sm mt-2" style={{ color: "var(--danger)" }}>{errors.donation_amount}</p>}
+        </div>
         <div>
           <label className="label">Ссылка на анкету мероприятия</label>
           <a

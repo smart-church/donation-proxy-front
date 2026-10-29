@@ -178,6 +178,7 @@ export default function Layout({ children }) {
               <SideLink to="/organizers" icon={Users} label="Пользователи" testid="side-organizers" />
               <SideLink to="/admins" icon={Shield} label="Администраторы" testid="side-admins" />
               <SideLink to="/admin/vtb-sandbox" icon={QrCode} label="СБП ВТБ: платёжные ссылки" testid="side-vtb-sandbox" />
+              <SideLink to="/admin/payments" icon={QrCode} label="Проверка пожертвований" testid="side-payment-review" />
             </>
           )}
         </nav>

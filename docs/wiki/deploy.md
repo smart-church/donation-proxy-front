@@ -175,7 +175,7 @@ urlpatterns = [
     re_path(r"^form/[0-9]+(?:/(?:success|fail))?/?$", frontend),
 ] + api_patterns + [
     re_path(
-        r"^(?:(?:login|reset-password|events|profile|participant|organizers|admins|admin/vtb-sandbox)(?:/.*)?)?$",
+        r"^(?:(?:login|reset-password|events|profile|participant|organizers|admins|admin/vtb-sandbox|admin/payments)(?:/.*)?)?$",
         frontend,
     ),
 ]

@@ -111,3 +111,18 @@ test('failed creation keeps entered values for retry and cancel creates nothing'
   expect(container.querySelector('[data-testid="participant-create-modal"]')).toBeNull();
   expect(api.createParticipant).toHaveBeenCalledTimes(1);
 });
+
+test('donation status is shown only when supplied for a positive event amount', async () => {
+  api.getForm.mockResolvedValue({ fields: [] });
+  api.listParticipants.mockResolvedValue([{ id: 1, full_name: 'Donor', email: 'donor@example.test', status: 'pending', answers: {},
+    donation: { status: 'paid', label: 'Пожертвование получено' } }]);
+  await act(async () => root.render(<ParticipantsList />));
+  expect(container.querySelector('table').textContent).toContain('Пожертвование получено');
+});
+
+test('zero amount does not render a donation status column or placeholder', async () => {
+  api.getForm.mockResolvedValue({ fields: [] });
+  api.listParticipants.mockResolvedValue([{ id: 1, full_name: 'Free', email: 'free@example.test', status: 'pending', answers: {}, donation: null }]);
+  await act(async () => root.render(<ParticipantsList />));
+  expect(container.querySelector('table').textContent).not.toContain('Пожертвование');
+});

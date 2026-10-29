@@ -4,6 +4,7 @@ import { Simulate } from 'react-dom/test-utils';
 import { PublicForm } from './PublicForm';
 import * as api from '../mock/api';
 
+jest.mock('../lib/donationNavigation', () => ({ ...jest.requireActual('../lib/donationNavigation'), redirectToNspk: jest.fn() }));
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({ useParams: () => ({ id: '1' }), useNavigate: () => mockNavigate }));
 jest.mock('../mock/api', () => ({ getPublicForm: jest.fn(), createFormUploadSession: jest.fn(),
@@ -59,9 +60,10 @@ test('shared session, pending uploads and text validation preserve the complete 
   expect([...container.querySelectorAll('[type=file]')].every((input) => input.disabled)).toBe(true);
   await submit();
   expect(api.submitParticipant).toHaveBeenCalledTimes(2);
+  expect(api.submitParticipant.mock.calls[0][5]).toBe(api.submitParticipant.mock.calls[1][5]);
   expect(api.submitParticipant).toHaveBeenLastCalledWith('1', expect.objectContaining({
     1: 'participant@example.com', 2: [expect.objectContaining({ file_id: 'one' })], 3: [expect.objectContaining({ file_id: 'two' })],
-  }), fields, {}, 'secret');
+  }), fields, {}, 'secret', expect.any(String));
   await act(async () => resolveSubmit({}));
   expect(mockNavigate).toHaveBeenCalledWith('/form/1/success');
 });
@@ -70,7 +72,7 @@ test('legacy form without files submits without an upload session', async () => 
   api.getPublicForm.mockResolvedValue({ event: { name: 'Event', registration_open: true }, fields: [fields[0]] });
   await mount(); await email('participant@example.com'); await submit();
   expect(api.createFormUploadSession).not.toHaveBeenCalled();
-  expect(api.submitParticipant).toHaveBeenCalledWith('1', { 1: 'participant@example.com' }, [fields[0]], {}, undefined);
+  expect(api.submitParticipant).toHaveBeenCalledWith('1', { 1: 'participant@example.com' }, [fields[0]], {}, undefined, expect.any(String));
 });
 
 test('agreement starts unchecked and must be explicitly confirmed before submission', async () => {
@@ -97,5 +99,20 @@ test('agreement starts unchecked and must be explicitly confirmed before submiss
   await act(async () => Simulate.change(checkbox, { target: { checked: true } }));
   await submit();
   expect(api.submitParticipant).toHaveBeenCalledWith('1',
-    { 1: 'participant@example.com', 4: 'Подтверждаю' }, formFields, {}, undefined);
+    { 1: 'participant@example.com', 4: 'Подтверждаю' }, formFields, {}, undefined, expect.any(String));
+});
+
+test('positive donation response redirects straight to NSPK', async () => {
+  api.getPublicForm.mockResolvedValue({ event: { name: 'Event', registration_open: true }, fields: [fields[0]] });
+  api.submitParticipant.mockResolvedValue({ payment_url: 'https://qr.nspk.ru/QR123' });
+  await mount(); await email('participant@example.com'); await submit();
+  expect(require('../lib/donationNavigation').redirectToNspk).toHaveBeenCalledWith('https://qr.nspk.ru/QR123');
+  expect(mockNavigate).not.toHaveBeenCalled();
+});
+
+test('saved registration with unavailable bank navigates to the personal recovery link', async () => {
+  api.getPublicForm.mockResolvedValue({ event: { name: 'Event', registration_open: true }, fields: [fields[0]] });
+  api.submitParticipant.mockResolvedValue({ status: 'creation_unknown', donation_url: '/donation-link/registration-id' });
+  await mount(); await email('participant@example.com'); await submit();
+  expect(mockNavigate).toHaveBeenCalledWith('/donation-link/registration-id');
 });

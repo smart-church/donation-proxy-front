@@ -7,6 +7,7 @@ import * as api from "../mock/api";
 import PublicFileAnswer from "../components/PublicFileAnswer";
 import SafeHtml from "../components/SafeHtml";
 import churchLogo from "../assets/church-logo.svg";
+import { newSubmissionKey, redirectToNspk } from "../lib/donationNavigation";
 
 // Public form page — no auth
 export function PublicForm() {
@@ -19,6 +20,8 @@ export function PublicForm() {
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const uploadSession = useRef(null);
+  const submissionKey = useRef(null);
+  const submittingRef = useRef(false);
   const [busyFields, setBusyFields] = useState({});
   const getSession = () => {
     const session = uploadSession.current;
@@ -31,6 +34,7 @@ export function PublicForm() {
   useEffect(() => {
     const session = { eventId, promise: null, abort: new AbortController() };
     uploadSession.current = session;
+    submissionKey.current = null;
     let alive = true;
     setEv(null); setData({}); setCustomValues({}); setBusyFields({}); setError("");
     api.getPublicForm(eventId, session.abort.signal).then((publicForm) => {
@@ -79,16 +83,27 @@ export function PublicForm() {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!isValid || submitting || Object.values(busyFields).some(Boolean)) return;
+    if (!isValid || submittingRef.current || submitting || Object.values(busyFields).some(Boolean)) return;
+    submittingRef.current = true;
     setError("");
     setSubmitting(true);
     try {
       const token = form.fields.some((f) => f.type === "file") ? await getSession() : undefined;
-      await api.submitParticipant(eventId, data, form.fields, customValues, token);
+      if (!submissionKey.current) submissionKey.current = newSubmissionKey();
+      const result = await api.submitParticipant(eventId, data, form.fields, customValues, token, submissionKey.current);
+      if (result?.payment_url) {
+        redirectToNspk(result.payment_url);
+        return;
+      }
+      if (result?.donation_url) {
+        navigate(result.donation_url);
+        return;
+      }
       navigate(`/form/${eventId}/success`);
     } catch (err) {
       setError(err.message_ru || ev.fail_form_description || "Не удалось отправить анкету.");
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -146,7 +161,7 @@ export function PublicForm() {
         )}
         <div className="public-submit-row">
           <button type="submit" className="btn btn-primary public-submit w-full" disabled={!isValid || submitting || Object.values(busyFields).some(Boolean)} data-testid="public-form-submit">
-            {submitting && <span className="spinner" />} Отправить анкету
+            {submitting && <span className="spinner" />} Зарегистрироваться
           </button>
         </div>
       </form>
@@ -346,7 +361,7 @@ function PublicResult({ success = false }) {
   );
 }
 
-function PublicShell({ title, children, prominentTitle = false, cardLayout = false, headerContent, hint = "Заполните все обязательные поля" }) {
+export function PublicShell({ title, children, prominentTitle = false, cardLayout = false, headerContent, hint = "Заполните все обязательные поля" }) {
   return (
     <div className={`min-h-screen px-4 py-10 ${cardLayout ? "public-card-form" : "grain"}`} style={{ background: "var(--bg)" }}>
       {!cardLayout && <div

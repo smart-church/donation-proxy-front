@@ -18,6 +18,8 @@ import Profile from "./pages/Profile";
 import { PublicFail, PublicForm, PublicSuccess } from "./pages/PublicForm";
 import ResetPassword from "./pages/ResetPassword";
 import VtbSandbox from "./pages/VtbSandbox";
+import Donation from "./pages/Donation";
+import PaymentReview from "./pages/PaymentReview";
 
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, ready } = useApp();
@@ -39,6 +41,8 @@ function AppRoutes() {
     <Routes>
       {/* Public routes */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/donation-link/:regId" element={<Donation />} />
+      <Route path="/donation-link/:regId/result" element={<Donation resultOnly />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/form/:id" element={<PublicForm />} />
       <Route path="/form/:id/success" element={<PublicSuccess />} />
@@ -66,6 +70,7 @@ function AppRoutes() {
                 <Route path="/organizers" element={<ProtectedRoute adminOnly><AdminOrganizers /></ProtectedRoute>} />
                 <Route path="/admins" element={<ProtectedRoute adminOnly><Admins /></ProtectedRoute>} />
                 <Route path="/admin/vtb-sandbox" element={<ProtectedRoute adminOnly><VtbSandbox /></ProtectedRoute>} />
+                <Route path="/admin/payments" element={<ProtectedRoute adminOnly><PaymentReview /></ProtectedRoute>} />
                 <Route path="*" element={<Navigate to="/events" replace />} />
               </Routes>
             </Layout>
