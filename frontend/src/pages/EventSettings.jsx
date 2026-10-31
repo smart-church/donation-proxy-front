@@ -301,7 +301,7 @@ export default function EventSettings() {
           <label className="flex items-center justify-between surface-soft px-4 py-3 cursor-pointer">
             <div>
               <div className="text-sm font-semibold">Автоматические письма</div>
-              <div className="text-xs" style={{ color: "var(--text-muted)" }}>Отправлять письмо при заполнении анкеты</div>
+              <div className="text-xs" style={{ color: "var(--text-muted)" }}>Отправлять письмо после успешной регистрации</div>
             </div>
             <input
               type="checkbox"
