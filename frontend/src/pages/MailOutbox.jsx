@@ -7,7 +7,7 @@ import DataTable from "../components/DataTable";
 import SafeHtml from "../components/SafeHtml";
 import { formatDateFull, formatDateShort } from "../lib/utils";
 
-const statusLabel = (m) => ({ waiting_payment: "Ожидает пожертвования", queued: "В очереди", sending: "Отправляется", sent: "Принято SMTP", failed: "Ошибка" }[m.status] || (m.is_sent ? "Принято SMTP" : "В очереди"));
+const statusLabel = (m) => ({ waiting_payment: "Ожидает пожертвования", queued: "В очереди", sending: "Отправляется", sent: "Принято SMTP", failed: "Ошибка", cancelled: "Отменено" }[m.status] || (m.is_sent ? "Принято SMTP" : "В очереди"));
 
 export function MailOutbox() {
   const { eventId } = useParams();
